@@ -16,7 +16,7 @@ export default function AdminLayout({ adminUser, currentView, onNavigate, onLogo
     { id: 'admin-committee', label: 'कमिटी व विश्वस्त', icon: '👥' },
     { id: 'admin-reports', label: 'प्रगती अहवाल', icon: '📊' },
     { id: 'admin-events', label: 'उत्सव व कार्यक्रम', icon: '🚩' },
-    { id: 'admin-gallery', label: 'छायाचित्रे (Gallery)', icon: '🖼️' },
+    { id: 'admin-gallery', label: 'छायाचित्रे', icon: '🖼️' },
   ];
 
   return (
