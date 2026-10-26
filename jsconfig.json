@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "jsx": "preserve",
+    "checkJs": false
+  },
+  "include": ["src/**/*"]
+}

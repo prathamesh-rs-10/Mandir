@@ -1,0 +1,48 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Environment variables & Supabase secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Supabase CLI (if used locally)
+.supabase/
+
+# Vite / Turbopack cache
+.vite/
+.cache/
+
+# ESLint cache
+.eslintcache
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System files
+.DS_Store
+Thumbs.db
