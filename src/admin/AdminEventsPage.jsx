@@ -1,41 +1,56 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
-const EMPTY_MEDIA_FORM = {
+const CATEGORIES = [
+  'वार्षिक उत्सव',
+  'धार्मिक विधी',
+  'विशेष सोहळा',
+  'बैठक व सभा',
+  'पालखी सोहळा',
+  'भंडारा व महाप्रसाद',
+];
+
+const INITIAL_EVENT_STATE = {
   title: '',
-  category: 'वास्तू आराखडा',
-  media_type: 'image',
-  media_url: '',
+  subtitle: '',
+  event_category: 'वार्षिक उत्सव',
   event_date: '',
+  end_date: '',
+  event_time: '',
+  location: 'श्री काळंबादेवी मंदिर परिसर, शेरपे',
   description: '',
+  attractions: '',
+  schedule_details: '',
+  banner_url: '',
+  contact_person: '',
+  contact_phone: '',
   is_featured: false,
+  status: 'आगामी',
+  is_active: true,
 };
 
-export default function AdminGalleryPage({ showNotification }) {
-  // Page configuration state
-  const [config, setConfig] = useState({
-    page_title: '',
-    page_subtitle: '',
-    upload_notice: '',
-    allow_devotee_uploads: true,
-  });
+export default function AdminEventsPage({ showNotification }) {
+  const [events, setEvents] = useState([]);
+  const [volunteers, setVolunteers] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Gallery items and tabs
-  const [gallery, setGallery] = useState([]);
-  const [activeTab, setActiveTab] = useState('approved'); // 'approved' | 'pending'
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-
-  // Form & Editing state
+  // Form states
+  const [formData, setFormData] = useState(INITIAL_EVENT_STATE);
+  const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [mediaForm, setMediaForm] = useState(EMPTY_MEDIA_FORM);
-  const [uploadFile, setUploadFile] = useState(null);
-  const [filePreview, setFilePreview] = useState(null);
+  const [showFormModal, setShowFormModal] = useState(false);
 
-  // Loading states
-  const [fetching, setFetching] = useState(true);
-  const [savingConfig, setSavingConfig] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Section config state
+  const [config, setConfig] = useState({
+    page_tag: '',
+    page_title: '',
+    page_description: '',
+    show_featured_banner: true,
+    show_category_filter: true,
+    show_volunteer_feature: true,
+    show_completed_events: true,
+    show_share_button: true,
+  });
 
   const notify = (msg, type = 'success') => {
     if (typeof showNotification === 'function') {
@@ -46,719 +61,801 @@ export default function AdminGalleryPage({ showNotification }) {
   };
 
   const loadData = async () => {
-    const [configRes, galleryRes] = await Promise.all([
-      supabase.from('mandir_gallery_config').select('*').limit(1).single(),
-      supabase.from('mandir_gallery').select('*').order('created_at', { ascending: false }),
-    ]);
+    setLoading(true);
 
-    if (configRes.data) {
-      setConfig({
-        page_title: configRes.data.page_title ?? '',
-        page_subtitle: configRes.data.page_subtitle ?? '',
-        upload_notice: configRes.data.upload_notice ?? '',
-        allow_devotee_uploads: configRes.data.allow_devotee_uploads ?? true,
-      });
-    }
+    // 1. Fetch Events
+    const { data: eventsData, error: eventsError } = await supabase
+      .from('mandir_events')
+      .select('*')
+      .order('event_date', { ascending: true });
 
-    if (galleryRes.data) {
-      setGallery(galleryRes.data);
-    }
+    if (eventsData) setEvents(eventsData);
+    if (eventsError) notify('कार्यक्रम लोड करताना त्रुटी: ' + eventsError.message, 'error');
 
-    setFetching(false);
+    // 2. Fetch Config
+    const { data: configData } = await supabase
+      .from('mandir_events_config')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+
+    if (configData) setConfig(configData);
+
+    // 3. Fetch Volunteers
+    const { data: volData } = await supabase
+      .from('mandir_event_volunteers')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (volData) setVolunteers(volData);
+
+    setLoading(false);
   };
 
   useEffect(() => {
     loadData();
   }, []);
 
-  // Compute category list from database records
-  const dynamicCategories = useMemo(() => {
-    const set = new Set(['वास्तू आराखडा', 'मंदिर बांधकाम', 'दर्शन व उत्सव', 'महाप्रसाद व सेवा']);
-    gallery.forEach((item) => {
-      if (item.category?.trim()) set.add(item.category.trim());
+  // ─── EVENT HANDLERS ───
+  const handleOpenAddModal = () => {
+    setFormData(INITIAL_EVENT_STATE);
+    setIsEditing(false);
+    setEditingId(null);
+    setShowFormModal(true);
+  };
+
+  const handleOpenEditModal = (event) => {
+    setFormData({
+      title: event.title || '',
+      subtitle: event.subtitle || '',
+      event_category: event.event_category || 'वार्षिक उत्सव',
+      event_date: event.event_date || '',
+      end_date: event.end_date || '',
+      event_time: event.event_time || '',
+      location: event.location || 'श्री काळंबादेवी मंदिर परिसर, शेरपे',
+      description: event.description || '',
+      attractions: event.attractions || '',
+      schedule_details: event.schedule_details || '',
+      banner_url: event.banner_url || '',
+      contact_person: event.contact_person || '',
+      contact_phone: event.contact_phone || '',
+      is_featured: event.is_featured ?? false,
+      status: event.status || 'आगामी',
+      is_active: event.is_active ?? true,
     });
-    return Array.from(set);
-  }, [gallery]);
-
-  // YouTube Helper
-  const isYouTubeUrl = (url) => url && (url.includes('youtube.com') || url.includes('youtu.be'));
-
-  const getEmbedUrl = (url) => {
-    if (!url) return '';
-    if (url.includes('youtube.com/watch?v=')) {
-      const videoId = url.split('watch?v=')[1]?.split('&')[0];
-      return `https://www.youtube.com/embed/${videoId}`;
-    }
-    if (url.includes('youtu.be/')) {
-      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      return `https://www.youtube.com/embed/${videoId}`;
-    }
-    return url;
+    setIsEditing(true);
+    setEditingId(event.id);
+    setShowFormModal(true);
   };
 
-  // 1. Save Page Configuration & Devotee Permissions
-  const handleSaveConfig = async (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    setSavingConfig(true);
-
-    const { error } = await supabase.from('mandir_gallery_config').upsert({
-      id: 1,
-      page_title: config.page_title,
-      page_subtitle: config.page_subtitle,
-      upload_notice: config.upload_notice,
-      allow_devotee_uploads: config.allow_devotee_uploads,
-      updated_at: new Date().toISOString(),
-    });
-
-    setSavingConfig(false);
-
-    if (!error) {
-      notify('गॅलरी पृष्ठ सेटिंग्ज यशस्वीरित्या जतन केल्या!');
-    } else {
-      notify('त्रुटी: ' + error.message, 'error');
-    }
-  };
-
-  // 2. Handle File Selection and Preview
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setUploadFile(file);
-      if (file.type.startsWith('image/')) {
-        setFilePreview(URL.createObjectURL(file));
-      } else {
-        setFilePreview(null);
-      }
-    }
-  };
-
-  // 3. Add or Update Gallery Media
-  const handleSaveMedia = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    let finalMediaUrl = mediaForm.media_url?.trim();
-
-    // Upload file if new file chosen
-    if (uploadFile) {
-      const fileExt = uploadFile.name.split('.').pop();
-      const fileName = `admin_${mediaForm.media_type}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `gallery-uploads/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('temple-assets')
-        .upload(filePath, uploadFile);
-
-      if (uploadError) {
-        notify('फाईल अपलोड त्रुटी: ' + uploadError.message, 'error');
-        setIsSubmitting(false);
-        return;
-      }
-
-      const { data: publicData } = supabase.storage
-        .from('temple-assets')
-        .getPublicUrl(filePath);
-
-      finalMediaUrl = publicData.publicUrl;
-    }
-
-    if (!finalMediaUrl) {
-      notify('कृपया फाईल निवडा किंवा वैध URL प्रविष्ट करा.', 'error');
-      setIsSubmitting(false);
+    if (!formData.title.trim() || !formData.event_date) {
+      notify('कार्यक्रमाचे नाव आणि तारीख भरणे आवश्यक आहे.', 'error');
       return;
     }
 
     const payload = {
-      title: mediaForm.title,
-      category: mediaForm.category || 'वास्तू आराखडा',
-      media_type: mediaForm.media_type,
-      media_url: finalMediaUrl,
-      event_date: mediaForm.event_date,
-      description: mediaForm.description,
-      is_featured: mediaForm.is_featured,
-      uploader_name: editingId ? undefined : 'व्यवस्थापक (Admin)',
-      is_approved: true, // Admin additions are approved by default
+      ...formData,
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+      updated_at: new Date().toISOString(),
     };
 
-    let result;
-    if (editingId) {
-      result = await supabase.from('mandir_gallery').update(payload).eq('id', editingId);
-    } else {
-      result = await supabase.from('mandir_gallery').insert([payload]);
-    }
+    if (isEditing && editingId) {
+      const { error } = await supabase
+        .from('mandir_events')
+        .update(payload)
+        .eq('id', editingId);
 
-    setIsSubmitting(false);
-
-    if (!result.error) {
-      notify(editingId ? 'नोंद यशस्वीरित्या अद्ययावत केली!' : 'नवीन फोटो/व्हिडिओ गॅलरीत जोडला गेला!');
-      handleCancelEdit();
-      loadData();
-    } else {
-      notify('त्रुटी: ' + result.error.message, 'error');
-    }
-  };
-
-  const handleEditClick = (item) => {
-    setEditingId(item.id);
-    setMediaForm({
-      title: item.title ?? '',
-      category: item.category ?? 'वास्तू आराखडा',
-      media_type: item.media_type ?? 'image',
-      media_url: item.media_url ?? '',
-      event_date: item.event_date ?? '',
-      description: item.description ?? '',
-      is_featured: item.is_featured ?? false,
-    });
-    setUploadFile(null);
-    setFilePreview(item.media_type === 'image' ? item.media_url : null);
-    window.scrollTo({ top: 320, behavior: 'smooth' });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setMediaForm(EMPTY_MEDIA_FORM);
-    setUploadFile(null);
-    setFilePreview(null);
-  };
-
-  // Toggle Live Approval
-  const toggleApproval = async (id, currentStatus) => {
-    const { error } = await supabase
-      .from('mandir_gallery')
-      .update({ is_approved: !currentStatus })
-      .eq('id', id);
-
-    if (!error) {
-      notify(!currentStatus ? 'नोंद गॅलरीत प्रकाशित केली!' : 'नोंद गॅलरीतून लपवली.');
-      loadData();
-    } else {
-      notify('त्रुटी: ' + error.message, 'error');
-    }
-  };
-
-  // Toggle Featured Flag
-  const toggleFeatured = async (id, currentFeatured) => {
-    const { error } = await supabase
-      .from('mandir_gallery')
-      .update({ is_featured: !currentFeatured })
-      .eq('id', id);
-
-    if (!error) {
-      notify(!currentFeatured ? 'विशेष (Featured) म्हणून चिन्हांकित केले!' : 'विशेष यादीतून काढले.');
-      loadData();
-    } else {
-      notify('त्रुटी: ' + error.message, 'error');
-    }
-  };
-
-  // Delete Media
-  const handleDelete = async (id) => {
-    if (!window.confirm('ही नोंद कायमस्वरूपी हटवायची आहे का?')) return;
-    const { error } = await supabase.from('mandir_gallery').delete().eq('id', id);
-
-    if (!error) {
-      notify('नोंद यशस्वीरित्या हटवली.');
-      loadData();
-      if (editingId === id) handleCancelEdit();
-    } else {
-      notify('त्रुटी: ' + error.message, 'error');
-    }
-  };
-
-  // Filtered lists
-  const approvedList = useMemo(() => {
-    return gallery.filter((item) => {
-      if (!item.is_approved) return false;
-      if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        return (
-          item.title?.toLowerCase().includes(q) ||
-          item.description?.toLowerCase().includes(q) ||
-          item.uploader_name?.toLowerCase().includes(q)
-        );
+      if (!error) {
+        notify('कार्यक्रम यशस्वीरित्या अद्ययावत केला!');
+        setShowFormModal(false);
+        loadData();
+      } else {
+        notify('त्रुटी: ' + error.message, 'error');
       }
-      return true;
-    });
-  }, [gallery, selectedCategory, searchQuery]);
+    } else {
+      const { error } = await supabase.from('mandir_events').insert([payload]);
+      if (!error) {
+        notify('नवीन कार्यक्रम यशस्वीरित्या जोडला!');
+        setShowFormModal(false);
+        loadData();
+      } else {
+        notify('त्रुटी: ' + error.message, 'error');
+      }
+    }
+  };
 
-  const pendingList = useMemo(() => {
-    return gallery.filter((item) => !item.is_approved);
-  }, [gallery]);
+  const handleDeleteEvent = async (id) => {
+    if (!window.confirm('हा कार्यक्रम नक्की हटवायचा आहे का?')) return;
+    const { error } = await supabase.from('mandir_events').delete().eq('id', id);
+    if (!error) {
+      setEvents((prev) => prev.filter((e) => e.id !== id));
+      notify('कार्यक्रम हटवला.');
+    } else {
+      notify('त्रुटी: ' + error.message, 'error');
+    }
+  };
 
-  if (fetching) {
-    return <div className="p-8 text-center text-stone-500 font-medium">डेटा लोड करत आहे...</div>;
-  }
+  const toggleEventVisibility = async (id, currentStatus) => {
+    const updated = !currentStatus;
+    const { error } = await supabase
+      .from('mandir_events')
+      .update({ is_active: updated, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (!error) {
+      setEvents((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, is_active: updated } : e))
+      );
+      notify(updated ? 'कार्यक्रम वेबसाईटवर दाखवला.' : 'कार्यक्रम लपवला.');
+    }
+  };
+
+  const toggleFeaturedStatus = async (id, currentStatus) => {
+    const updated = !currentStatus;
+    const { error } = await supabase
+      .from('mandir_events')
+      .update({ is_featured: updated, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (!error) {
+      setEvents((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, is_featured: updated } : e))
+      );
+      notify(updated ? 'प्रमुख आगामी उत्सव म्हणून निवडले ⭐' : 'प्रमुख उत्सवातून काढले.');
+    }
+  };
+
+  const handleStatusChange = async (id, newStatus) => {
+    const { error } = await supabase
+      .from('mandir_events')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (!error) {
+      setEvents((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, status: newStatus } : e))
+      );
+      notify(`स्थिती बदलली: ${newStatus}`);
+    }
+  };
+
+  // ─── CONFIG SAVE HANDLER ───
+  const handleSaveConfig = async (e) => {
+    e.preventDefault();
+    const { error } = await supabase
+      .from('mandir_events_config')
+      .upsert({ id: 1, ...config, updated_at: new Date().toISOString() });
+
+    if (!error) {
+      notify('वेबसाईट विभाग सेटिंग्ज जतन झाल्या!');
+    } else {
+      notify('त्रुटी: ' + error.message, 'error');
+    }
+  };
+
+  // ─── VOLUNTEER ACTIONS ───
+  const toggleVolunteerStatus = async (id, currentStatus) => {
+    const updated = currentStatus === 'confirmed' ? 'pending' : 'confirmed';
+    const { error } = await supabase
+      .from('mandir_event_volunteers')
+      .update({ status: updated })
+      .eq('id', id);
+
+    if (!error) {
+      setVolunteers((prev) =>
+        prev.map((v) => (v.id === id ? { ...v, status: updated } : v))
+      );
+      notify(updated === 'confirmed' ? 'सेवा नोंदणी स्वीकृत केली.' : 'प्रलंबित ठेवली.');
+    }
+  };
+
+  const handleDeleteVolunteer = async (id) => {
+    if (!window.confirm('हा सेवा अर्ज हटवायचा आहे का?')) return;
+    const { error } = await supabase.from('mandir_event_volunteers').delete().eq('id', id);
+    if (!error) {
+      setVolunteers((prev) => prev.filter((v) => v.id !== id));
+      notify('नोंद हटवली.');
+    }
+  };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-12 font-sans text-stone-800">
-      
-      {/* Top Header */}
-      <div className="border-b border-stone-200 pb-3">
-        <h2 className="text-xl font-bold text-stone-900">गॅलरी व्यवस्थापन (Gallery CMS & Moderation)</h2>
-        <p className="text-xs text-stone-500 mt-1">
-          वेबसाईटवरील फोटो, व्हिडिओ, भाविक अपलोड्सची पडताळणी आणि पृष्ठ सेटिंग्ज येथून नियंत्रित करा.
-        </p>
+    <div className="max-w-7xl mx-auto space-y-8 p-2 sm:p-4">
+      {/* ─── HEADER ─── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-xl font-extrabold text-gray-900">
+            कार्यक्रम व उत्सव व्यवस्थापन (Events CMS)
+          </h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            वेबसाईटवरील धार्मिक उत्सव, रूपरेषा, विभाग सेटिंग्ज आणि स्वयंसेवक नोंदणी व्यवस्थापित करा.
+          </p>
+        </div>
+        <button
+          onClick={handleOpenAddModal}
+          className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center gap-2"
+        >
+          <span>+</span>
+          <span>नवीन कार्यक्रम जोडा</span>
+        </button>
       </div>
 
-      {/* 1. Page Configuration & Settings Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 space-y-4">
-        <h3 className="text-base font-bold text-orange-800 border-b pb-2 flex items-center gap-2">
-          ⚙️ १. गॅलरी पृष्ठ शीर्षक व भाविक अपलोड सेटिंग्ज
-        </h3>
-
-        <form onSubmit={handleSaveConfig} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                पृष्ठ मुख्य शीर्षक (Page Title)
-              </label>
-              <input
-                type="text"
-                value={config.page_title}
-                onChange={(e) => setConfig({ ...config, page_title: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                उपशीर्षक (Page Subtitle)
-              </label>
-              <input
-                type="text"
-                value={config.page_subtitle}
-                onChange={(e) => setConfig({ ...config, page_subtitle: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                भाविक अपलोड सूचना संदेश (Upload Notice)
-              </label>
-              <input
-                type="text"
-                value={config.upload_notice}
-                onChange={(e) => setConfig({ ...config, upload_notice: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
-              />
-            </div>
-
-            <div className="md:col-span-2 flex items-center gap-2 pt-1">
-              <input
-                type="checkbox"
-                id="allow_devotee_uploads"
-                checked={config.allow_devotee_uploads}
-                onChange={(e) => setConfig({ ...config, allow_devotee_uploads: e.target.checked })}
-                className="rounded text-orange-600 focus:ring-orange-400 h-4 w-4"
-              />
-              <label htmlFor="allow_devotee_uploads" className="text-xs font-semibold text-stone-800 cursor-pointer">
-                भाविकांना वेबसाईटवरून फोटो/व्हिडिओ पाठवण्याची परवानगी द्या (Allow Devotee Uploads)
-              </label>
-            </div>
+      {/* ─── SECTION 1: ALL EVENTS LIST ─── */}
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-3 gap-2">
+          <div>
+            <h2 className="font-bold text-gray-800 text-base flex items-center gap-2">
+              <span>📅</span>
+              <span>सर्व उत्सव व कार्यक्रम (Events List)</span>
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              येथून सर्व कार्यक्रमांची माहिती संपादित करा, लपवा किंवा प्रमुख उत्सव निवडा.
+            </p>
           </div>
-
-          <button
-            type="submit"
-            disabled={savingConfig}
-            className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-semibold px-5 py-2 rounded-xl text-xs transition shadow-sm"
-          >
-            {savingConfig ? 'जतन करत आहे...' : 'सेटिंग्ज सेव्ह करा'}
-          </button>
-        </form>
-      </div>
-
-      {/* 2. Media Add / Edit Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 space-y-4">
-        <div className="flex items-center justify-between border-b pb-2">
-          <h3 className="text-base font-bold text-orange-800 flex items-center gap-2">
-            <span>{editingId ? '✏️' : '➕'}</span>
-            <span>
-              {editingId ? '२. छायाचित्र / व्हिडिओ संपादित करा (Edit Media)' : '२. नवीन छायाचित्र किंवा व्हिडिओ जोडा (Admin Direct Upload)'}
-            </span>
-          </h3>
-          {editingId && (
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              className="text-xs text-stone-500 hover:text-stone-800 underline font-medium"
-            >
-              संपादित करणे रद्द करा
-            </button>
-          )}
+          <span className="text-xs bg-orange-50 text-orange-800 border border-orange-200 font-semibold px-3 py-1 rounded-full">
+            एकूण: {events.length} | आगामी: {events.filter((e) => e.status !== 'संपन्न').length}
+          </span>
         </div>
 
-        <form onSubmit={handleSaveMedia} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                शीर्षक / कॅप्शन *
-              </label>
-              <input
-                type="text"
-                placeholder="उदा. शिखर व कळस रचना"
-                value={mediaForm.title}
-                onChange={(e) => setMediaForm({ ...mediaForm, title: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">विभाग (Category)</label>
-              <input
-                type="text"
-                list="adminCategoryList"
-                placeholder="उदा. वास्तू आराखडा"
-                value={mediaForm.category}
-                onChange={(e) => setMediaForm({ ...mediaForm, category: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
-                required
-              />
-              <datalist id="adminCategoryList">
-                {dynamicCategories.map((cat, idx) => (
-                  <option key={idx} value={cat} />
-                ))}
-              </datalist>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">माध्यम प्रकार</label>
-              <select
-                value={mediaForm.media_type}
-                onChange={(e) => setMediaForm({ ...mediaForm, media_type: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm font-semibold bg-white focus:ring-2 focus:ring-orange-400 focus:outline-none"
-              >
-                <option value="image">🖼️ छायाचित्र (Photo)</option>
-                <option value="video">🎥 व्हिडिओ (Video)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">तारीख / वर्ष</label>
-              <input
-                type="text"
-                placeholder="उदा. ऑक्टोबर २०२४"
-                value={mediaForm.event_date}
-                onChange={(e) => setMediaForm({ ...mediaForm, event_date: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 pt-6">
-              <input
-                type="checkbox"
-                id="is_featured"
-                checked={mediaForm.is_featured}
-                onChange={(e) => setMediaForm({ ...mediaForm, is_featured: e.target.checked })}
-                className="rounded text-orange-600 focus:ring-orange-400 h-4 w-4"
-              />
-              <label htmlFor="is_featured" className="text-xs font-semibold text-stone-800 cursor-pointer">
-                ⭐ विशेष बॅज द्या (Featured Item)
-              </label>
-            </div>
-
-            <div className="md:col-span-3">
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                सविस्तर माहिती / वर्णन (Description)
-              </label>
-              <textarea
-                rows="2"
-                placeholder="या फोटो किंवा व्हिडिओविषयी अधिक माहिती..."
-                value={mediaForm.description}
-                onChange={(e) => setMediaForm({ ...mediaForm, description: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none"
-              />
-            </div>
-
-            {/* Direct Upload File */}
-            <div className="md:col-span-2 border border-dashed border-stone-300 rounded-xl p-3 bg-stone-50/50">
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                थेट संगणकातून फाईल निवडा ({mediaForm.media_type === 'image' ? 'JPG, PNG, WebP' : 'MP4, WebM'})
-              </label>
-              <input
-                type="file"
-                accept={mediaForm.media_type === 'image' ? 'image/*' : 'video/*'}
-                onChange={handleFileChange}
-                className="text-xs text-stone-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-orange-100 file:text-orange-800 hover:file:bg-orange-200 cursor-pointer"
-              />
-              {filePreview && (
-                <div className="mt-2 w-24 h-20 rounded-lg overflow-hidden border border-stone-200">
-                  <img src={filePreview} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-              )}
-            </div>
-
-            {/* Direct Web URL */}
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                किंवा ऑनलाइन URL / YouTube लिंक
-              </label>
-              <input
-                type="url"
-                placeholder="https://... किंवा YouTube"
-                value={mediaForm.media_url}
-                onChange={(e) => setMediaForm({ ...mediaForm, media_url: e.target.value })}
-                className="w-full px-3 py-2 border rounded-xl text-xs font-mono focus:ring-2 focus:ring-orange-400 focus:outline-none"
-              />
-            </div>
+        {loading ? (
+          <p className="text-center py-10 text-xs text-gray-400">माहिती लोड होत आहे...</p>
+        ) : events.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-xs">
+            कोणतेही कार्यक्रम उपलब्ध नाहीत. "नवीन कार्यक्रम जोडा" वर क्लिक करा.
           </div>
-
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl text-xs shadow-md transition"
-            >
-              {isSubmitting
-                ? 'अपलोड होत आहे...'
-                : editingId
-                ? 'बदल जतन करा (Update Media)'
-                : 'गॅलरीत प्रकाशित करा (Publish)'}
-            </button>
-            {editingId && (
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="bg-stone-200 hover:bg-stone-300 text-stone-700 font-semibold px-4 py-2.5 rounded-xl text-xs transition"
-              >
-                रद्द करा
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-
-      {/* 3. Moderation & Gallery Management Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 space-y-5">
-        
-        {/* Navigation Tabs */}
-        <div className="flex flex-wrap items-center justify-between border-b border-stone-200 pb-3 gap-3">
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setActiveTab('approved')}
-              className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition ${
-                activeTab === 'approved'
-                  ? 'bg-orange-600 text-white shadow-sm'
-                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-              }`}
-            >
-              वेबसाईटवर प्रदर्शित संग्रह ({approvedList.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('pending')}
-              className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition flex items-center gap-2 ${
-                activeTab === 'pending'
-                  ? 'bg-orange-600 text-white shadow-sm'
-                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-              }`}
-            >
-              <span>पडताळणी प्रलंबित (Pending)</span>
-              <span
-                className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                  pendingList.length > 0 ? 'bg-amber-400 text-stone-900' : 'bg-stone-200 text-stone-600'
+        ) : (
+          <div className="space-y-4">
+            {events.map((ev) => (
+              <div
+                key={ev.id}
+                className={`p-4 sm:p-5 border rounded-2xl transition-all ${
+                  !ev.is_active
+                    ? 'bg-gray-50/70 border-dashed border-gray-300 opacity-70'
+                    : 'bg-white border-gray-200 shadow-xs'
                 }`}
               >
-                {pendingList.length}
-              </span>
-            </button>
-          </div>
-
-          {/* Search bar inside Approved list */}
-          {activeTab === 'approved' && (
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <input
-                type="text"
-                placeholder="शीर्षक किंवा नावाने शोधा..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="px-3 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 w-full sm:w-60"
-              />
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
-              >
-                <option value="all">सर्व विभाग</option>
-                {dynamicCategories.map((c, i) => (
-                  <option key={i} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        {/* Tab 1: Pending Moderation List */}
-        {activeTab === 'pending' ? (
-          <div className="space-y-4">
-            {pendingList.map((item) => (
-              <div
-                key={item.id}
-                className="p-5 border border-amber-200 bg-amber-50/40 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm"
-              >
-                <div className="flex gap-4 items-start">
-                  <div className="w-28 h-24 bg-black rounded-xl overflow-hidden shrink-0 flex items-center justify-center border border-amber-300">
-                    {item.media_type === 'video' ? (
-                      isYouTubeUrl(item.media_url) ? (
-                        <iframe src={getEmbedUrl(item.media_url)} title={item.title} className="w-full h-full" />
-                      ) : (
-                        <video src={item.media_url} className="w-full h-full object-cover" />
-                      )
-                    ) : (
-                      <img src={item.media_url} alt={item.title} className="w-full h-full object-cover" />
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                  <div className="space-y-1.5 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-bold bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full border border-orange-200">
-                        {item.category}
+                      <span className="text-[11px] font-bold bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-md">
+                        {ev.event_category}
                       </span>
-                      <span className="text-[11px] font-semibold text-stone-500">
-                        {item.media_type === 'video' ? '🎥 व्हिडिओ' : '🖼️ फोटो'}
+                      {ev.is_featured && (
+                        <span className="text-[11px] font-bold bg-amber-400 text-orange-950 px-2 py-0.5 rounded-md">
+                          ⭐ प्रमुख उत्सव (Mega Banner)
+                        </span>
+                      )}
+                      <span
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                          ev.status === 'संपन्न'
+                            ? 'bg-gray-200 text-gray-700'
+                            : ev.status === 'चालू'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}
+                      >
+                        {ev.status}
                       </span>
-                      {item.event_date && (
-                        <span className="text-[11px] text-stone-400">🗓️ {item.event_date}</span>
+                      {!ev.is_active && (
+                        <span className="text-[11px] bg-red-100 text-red-700 px-2 py-0.5 rounded-md font-medium">
+                          वेबसाईटवर लपवले आहे (Hidden)
+                        </span>
                       )}
                     </div>
-                    <h4 className="font-bold text-stone-900 text-base">{item.title}</h4>
-                    {item.description && (
-                      <p className="text-xs text-stone-600 line-clamp-2">{item.description}</p>
+
+                    <h4 className="text-base font-bold text-gray-900">{ev.title}</h4>
+                    {ev.subtitle && (
+                      <p className="text-xs font-semibold text-orange-700">{ev.subtitle}</p>
                     )}
-                    <p className="text-xs text-stone-500 pt-1">
-                      पाठवणारे: <strong className="text-stone-800">{item.uploader_name}</strong>{' '}
-                      {item.uploader_phone && `(${item.uploader_phone})`} •{' '}
-                      {item.created_at ? new Date(item.created_at).toLocaleDateString('mr-IN') : ''}
-                    </p>
+
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 pt-1">
+                      <span>
+                        📅 <strong>तारीख:</strong> {ev.event_date}
+                        {ev.end_date ? ` ते ${ev.end_date}` : ''}
+                      </span>
+                      <span>⏰ <strong>वेळ:</strong> {ev.event_time || 'दिवसभर'}</span>
+                      <span>📍 <strong>स्थान:</strong> {ev.location}</span>
+                    </div>
+
+                    {ev.description && (
+                      <p className="text-xs text-gray-600 line-clamp-2 mt-1">{ev.description}</p>
+                    )}
+                  </div>
+
+                  {/* Action Controls */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-end lg:self-center">
+                    <select
+                      value={ev.status || 'आगामी'}
+                      onChange={(e) => handleStatusChange(ev.id, e.target.value)}
+                      className="text-xs border rounded-lg px-2 py-1.5 bg-gray-50 font-medium"
+                    >
+                      <option value="आगामी">आगामी (Upcoming)</option>
+                      <option value="चालू">चालू (Live)</option>
+                      <option value="संपन्न">संपन्न (Completed)</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleFeaturedStatus(ev.id, ev.is_featured)}
+                      className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium ${
+                        ev.is_featured
+                          ? 'bg-amber-100 border-amber-300 text-amber-900'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                      title="प्रमुख बॅनरवर प्रदर्शित करा"
+                    >
+                      {ev.is_featured ? '★ प्रमुख' : '☆ प्रमुख करा'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleEventVisibility(ev.id, ev.is_active)}
+                      className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium ${
+                        ev.is_active
+                          ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                          : 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                      }`}
+                    >
+                      {ev.is_active ? 'लपवा' : 'दाखवा'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditModal(ev)}
+                      className="text-xs text-blue-600 border border-blue-200 bg-blue-50/50 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg font-semibold"
+                    >
+                      बदला
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEvent(ev.id)}
+                      className="text-xs text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-50 px-2.5 py-1.5 rounded-lg font-semibold"
+                    >
+                      हटवा
+                    </button>
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+      {/* ─── SECTION 2: WEBSITE DISPLAY CONTROLLER ─── */}
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
+        <form onSubmit={handleSaveConfig} className="space-y-6">
+          <div className="border-b pb-3">
+            <h2 className="font-bold text-gray-800 text-base flex items-center gap-2">
+              <span>⚙️</span>
+              <span>वेबसाईट विभाग नियंत्रक (Display Controls)</span>
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              येथील सेटिंग्जद्वारे तुम्ही ठरवू शकता की उत्सव पानावर कोणते विभाग आणि फीचर्स भाविकांना दिसावेत.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.show_featured_banner}
+                onChange={(e) => setConfig({ ...config, show_featured_banner: e.target.checked })}
+                className="h-4 w-4 text-orange-600 rounded"
+              />
+              <span className="text-xs font-semibold text-gray-700">
+                प्रमुख आगामी उत्सव महा-बॅनर (Mega Banner)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.show_category_filter}
+                onChange={(e) => setConfig({ ...config, show_category_filter: e.target.checked })}
+                className="h-4 w-4 text-orange-600 rounded"
+              />
+              <span className="text-xs font-semibold text-gray-700">
+                उत्सव वर्गवारी फिल्टर्स (Category Filter Tabs)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.show_volunteer_feature}
+                onChange={(e) => setConfig({ ...config, show_volunteer_feature: e.target.checked })}
+                className="h-4 w-4 text-orange-600 rounded"
+              />
+              <span className="text-xs font-semibold text-gray-700">
+                स्वयंसेवक सेवा नोंदणी बटण व फॉर्म (Volunteer Modal)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.show_completed_events}
+                onChange={(e) => setConfig({ ...config, show_completed_events: e.target.checked })}
+                className="h-4 w-4 text-orange-600 rounded"
+              />
+              <span className="text-xs font-semibold text-gray-700">
+                संपन्न झालेले कार्यक्रम यादीत दाखवा (Past Events)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.show_share_button}
+                onChange={(e) => setConfig({ ...config, show_share_button: e.target.checked })}
+                className="h-4 w-4 text-orange-600 rounded"
+              />
+              <span className="text-xs font-semibold text-gray-700">
+                कार्यक्रम माहिती शेअर बटण (Share Button)
+              </span>
+            </label>
+          </div>
+
+          <div className="pt-4 border-t space-y-4">
+            <h3 className="font-bold text-gray-800 text-sm">
+              पानावरील मुख्य मजकूर व मथळा (Page Header Content)
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  घोषवाक्य टॅग (Page Tag)
+                </label>
+                <input
+                  type="text"
+                  value={config.page_tag || ''}
+                  onChange={(e) => setConfig({ ...config, page_tag: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  पानाचे मुख्य नाव (Page Title)
+                </label>
+                <input
+                  type="text"
+                  value={config.page_title || ''}
+                  onChange={(e) => setConfig({ ...config, page_title: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  सविस्तर वर्णन (Page Description)
+                </label>
+                <textarea
+                  rows="2"
+                  value={config.page_description || ''}
+                  onChange={(e) => setConfig({ ...config, page_description: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs sm:text-sm shadow transition"
+            >
+              सेटिंग्ज जतन करा (Save Settings)
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* ─── SECTION 3: VOLUNTEER REGISTRATIONS ─── */}
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-3 gap-2">
+          <div>
+            <h2 className="font-bold text-gray-800 text-base flex items-center gap-2">
+              <span>🙏</span>
+              <span>सेवा स्वयंसेवक अर्ज (Volunteer Registrations)</span>
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              भाविक उत्सवामध्ये सेवेसाठी नोंदवलेली नावे व संपर्क माहिती.
+            </p>
+          </div>
+          <span className="text-xs bg-orange-100 text-orange-800 font-bold px-3 py-1 rounded-full">
+            एकूण अर्ज: {volunteers.length}
+          </span>
+        </div>
+
+        {volunteers.length === 0 ? (
+          <p className="text-center py-10 text-xs text-gray-400">अद्याप सेवा अर्ज आलेले नाहीत.</p>
+        ) : (
+          <div className="space-y-3">
+            {volunteers.map((vol) => (
+              <div
+                key={vol.id}
+                className={`p-4 border rounded-xl flex flex-col sm:flex-row justify-between items-start gap-4 ${
+                  vol.status === 'confirmed' ? 'bg-emerald-50/30 border-emerald-200' : 'bg-gray-50'
+                }`}
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded">
+                      {vol.event_title || 'उत्सव सेवा'}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        vol.status === 'confirmed'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {vol.status === 'confirmed' ? 'स्वीकृत (Confirmed)' : 'प्रलंबित (Pending)'}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(vol.created_at).toLocaleDateString('mr-IN')}
+                    </span>
+                  </div>
+
+                  <h4 className="font-bold text-gray-900 text-sm">{vol.volunteer_name}</h4>
+                  <p className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1">
+                    <span>📞 <strong>मोबाईल:</strong> {vol.phone}</span>
+                    <span>📍 <strong>गाव/शहर:</strong> {vol.city}</span>
+                  </p>
+                  <p className="text-xs text-orange-900 font-medium">
+                    🙏 <strong>इच्छुक सेवा:</strong> {vol.seva_type}
+                  </p>
+                  {vol.message && (
+                    <p className="text-xs text-gray-700 bg-white p-2.5 rounded-lg border mt-1">
+                      "{vol.message}"
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex sm:flex-col items-center gap-2 shrink-0 self-end sm:self-center">
+                  <a
+                    href={`tel:${vol.phone.replace(/[^0-9+]/g, '')}`}
+                    className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg"
+                  >
+                    कॉल करा
+                  </a>
                   <button
                     type="button"
-                    onClick={() => toggleApproval(item.id, false)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition"
+                    onClick={() => toggleVolunteerStatus(vol.id, vol.status)}
+                    className="border border-gray-300 hover:bg-white text-xs font-semibold px-3 py-1.5 rounded-lg"
                   >
-                    मंजूर करा (Approve) ✓
+                    {vol.status === 'confirmed' ? 'प्रलंबित करा' : 'स्वीकृत करा'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleEditClick(item)}
-                    className="border border-stone-300 hover:bg-stone-100 text-stone-700 text-xs font-bold px-3 py-2 rounded-xl transition"
-                  >
-                    संपादित करा
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(item.id)}
-                    className="text-red-600 hover:bg-red-50 text-xs font-bold border border-red-200 px-3 py-2 rounded-xl transition"
+                    onClick={() => handleDeleteVolunteer(vol.id)}
+                    className="text-red-600 hover:text-red-800 text-xs px-2 py-1"
                   >
                     हटवा
                   </button>
                 </div>
               </div>
             ))}
-
-            {pendingList.length === 0 && (
-              <div className="text-center py-12 text-stone-400 border border-dashed rounded-2xl">
-                कोणतीही नवीन नोंद मंजुरीसाठी प्रलंबित नाही. सर्व नोंदी तपासल्या गेल्या आहेत.
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Tab 2: Approved / Live Media Grid */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {approvedList.map((item) => (
-              <div
-                key={item.id}
-                className="border border-stone-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition"
-              >
-                <div className="relative w-full h-44 bg-black flex items-center justify-center overflow-hidden">
-                  {item.media_type === 'video' ? (
-                    isYouTubeUrl(item.media_url) ? (
-                      <iframe src={getEmbedUrl(item.media_url)} title={item.title} className="w-full h-full" />
-                    ) : (
-                      <video src={item.media_url} controls className="w-full h-full object-cover" />
-                    )
-                  ) : (
-                    <img src={item.media_url} alt={item.title} className="w-full h-full object-cover" />
-                  )}
-
-                  <div className="absolute top-2 inset-x-2 flex justify-between items-center pointer-events-none">
-                    <span className="text-[10px] bg-black/60 backdrop-blur-md text-white px-2 py-0.5 rounded-full font-bold">
-                      {item.category}
-                    </span>
-                    {item.is_featured && (
-                      <span className="text-[10px] bg-orange-600 text-white font-extrabold px-2 py-0.5 rounded-full shadow">
-                        विशेष ⭐
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <h4 className="font-bold text-stone-900 text-sm leading-snug line-clamp-1" title={item.title}>
-                      {item.title}
-                    </h4>
-                  </div>
-                  {item.description && (
-                    <p className="text-xs text-stone-500 line-clamp-1">{item.description}</p>
-                  )}
-                  <p className="text-[11px] text-stone-400">
-                    सौजन्य: {item.uploader_name || 'व्यवस्थापक'} {item.event_date ? `• ${item.event_date}` : ''}
-                  </p>
-
-                  <div className="flex flex-wrap items-center justify-between pt-3 border-t border-stone-100 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleFeatured(item.id, item.is_featured)}
-                      className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition ${
-                        item.is_featured
-                          ? 'bg-amber-100 text-amber-900 border-amber-300'
-                          : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
-                      }`}
-                    >
-                      {item.is_featured ? 'विशेष काढवा' : 'विशेष करा ⭐'}
-                    </button>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleEditClick(item)}
-                        className="text-stone-700 hover:bg-stone-100 border border-stone-200 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
-                      >
-                        संपादित
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleApproval(item.id, true)}
-                        className="text-amber-800 hover:bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
-                      >
-                        लपवा
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item.id)}
-                        className="text-red-600 hover:bg-red-50 border border-red-200 px-2 py-1 rounded-lg text-xs font-semibold transition"
-                      >
-                        हटवा
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {approvedList.length === 0 && (
-              <div className="col-span-full text-center py-12 text-stone-400 border border-dashed rounded-2xl">
-                वेबसाईटवर प्रदर्शित करण्यासाठी कोणतीही सामग्री उपलब्ध नाही.
-              </div>
-            )}
           </div>
         )}
-      </div>
+      </section>
+
+      {/* ─── ADD / EDIT EVENT MODAL ─── */}
+      {showFormModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl relative my-8 border border-gray-200">
+            <button
+              onClick={() => setShowFormModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-sm font-bold bg-gray-100 w-8 h-8 rounded-full flex items-center justify-center"
+            >
+              ✕
+            </button>
+
+            <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">
+              {isEditing ? 'कार्यक्रमाची माहिती संपादित करा' : 'नवीन कार्यक्रम जोडा'}
+            </h3>
+
+            <form onSubmit={handleFormSubmit} className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    कार्यक्रमाचे नाव (Event Title) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="उदा. श्री काळंबादेवी वार्षिक जत्रोत्सव"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    उपशीर्षक (Subtitle)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="उदा. महापूजा, पालखी मिरवणूक व महाप्रसाद"
+                    value={formData.subtitle}
+                    onChange={(e) => setFormData({ ...formData, subtitle: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">वर्गवारी</label>
+                  <select
+                    value={formData.event_category}
+                    onChange={(e) => setFormData({ ...formData, event_category: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm bg-white"
+                  >
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">सुरुवात तारीख *</label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.event_date}
+                    onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">समाप्ती तारीख (ऐच्छिक)</label>
+                  <input
+                    type="date"
+                    value={formData.end_date}
+                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">वेळ</label>
+                  <input
+                    type="text"
+                    placeholder="उदा. सकाळी ८:०० ते रात्रौ १०:००"
+                    value={formData.event_time}
+                    onChange={(e) => setFormData({ ...formData, event_time: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">स्थान</label>
+                  <input
+                    type="text"
+                    placeholder="उदा. श्री काळंबादेवी मंदिर परिसर, शेरपे"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">सविस्तर वर्णन</label>
+                  <textarea
+                    rows="3"
+                    placeholder="कार्यक्रमाविषयी संपूर्ण माहिती..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    ठळक वैशिष्ट्ये (स्वल्पविरामाने वेगळे करा)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="उदा. अखंड हरिनाम सप्ताह, पालखी सोहळा, महाप्रसाद"
+                    value={formData.attractions}
+                    onChange={(e) => setFormData({ ...formData, attractions: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">बॅनर फोटो URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={formData.banner_url}
+                    onChange={(e) => setFormData({ ...formData, banner_url: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    दैनंदिन रूपरेषा व वेळापत्रक (Schedule)
+                  </label>
+                  <textarea
+                    rows="2"
+                    placeholder="उदा. सकाळी ६:०० - काकड आरती | दुपारी १२:०० - महाप्रसाद"
+                    value={formData.schedule_details}
+                    onChange={(e) => setFormData({ ...formData, schedule_details: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">संयोजक / संपर्क व्यक्ती</label>
+                  <input
+                    type="text"
+                    placeholder="उदा. श्री. शांताराम सावंत"
+                    value={formData.contact_person}
+                    onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">संपर्क मोबाईल क्र.</label>
+                  <input
+                    type="text"
+                    placeholder="उदा. 98XXXXXXXX"
+                    value={formData.contact_phone}
+                    onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 flex flex-wrap gap-6 pt-2 border-t">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_featured}
+                      onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
+                      className="rounded text-amber-500 h-4 w-4"
+                    />
+                    <span>⭐ प्रमुख आगामी उत्सव म्हणून दाखवा (Top Mega Banner)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_active}
+                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                      className="rounded text-orange-600 h-4 w-4"
+                    />
+                    <span>वेबसाईटवर लगेच दाखवा (Visible on frontend)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowFormModal(false)}
+                  className="px-5 py-2.5 rounded-xl border text-gray-700 text-xs font-bold hover:bg-gray-50"
+                >
+                  रद्द करा
+                </button>
+                <button
+                  type="submit"
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs shadow-md transition"
+                >
+                  {isEditing ? 'बदल सेव्ह करा' : 'कार्यक्रम जोडा'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
