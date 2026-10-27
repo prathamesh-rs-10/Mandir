@@ -7,6 +7,8 @@ export default function AdminDonationsPage({ showNotification }) {
   const [uploadingQr, setUploadingQr] = useState(false);
   const [contactId, setContactId] = useState(null);
 
+  // Form States
+  const [editingId, setEditingId] = useState(null);
   const [donorName, setDonorName] = useState('');
   const [amount, setAmount] = useState('');
   const [city, setCity] = useState('');
@@ -74,32 +76,138 @@ export default function AdminDonationsPage({ showNotification }) {
     }
   };
 
-  const handleAddDonation = async (e) => {
+  // Handle Add & Update
+  const handleSubmitDonation = async (e) => {
     e.preventDefault();
-    const { error } = await supabase.from('mandir_donations').insert([
-      {
-        donor_name: donorName,
-        amount: parseFloat(amount),
-        city,
-        phone,
-        category,
-        payment_mode: paymentMode,
-        transaction_ref: transactionRef,
-        is_verified: true,
-      },
-    ]);
+    
+    const payload = {
+      donor_name: donorName,
+      amount: parseFloat(amount),
+      city,
+      phone,
+      category,
+      payment_mode: paymentMode,
+      transaction_ref: transactionRef,
+    };
 
+    if (editingId) {
+      // Update existing record
+      const { error } = await supabase.from('mandir_donations').update(payload).eq('id', editingId);
+      if (!error) {
+        showNotification('देणगी नोंद यशस्वीरित्या अपडेट केली!');
+        cancelEdit();
+        loadData();
+      } else {
+        showNotification('त्रुटी: ' + error.message, 'error');
+      }
+    } else {
+      // Create new record
+      payload.is_verified = true;
+      const { error } = await supabase.from('mandir_donations').insert([payload]);
+      if (!error) {
+        showNotification('देणगी नोंद यशस्वीरित्या जोडली!');
+        cancelEdit();
+        loadData();
+      } else {
+        showNotification('त्रुटी: ' + error.message, 'error');
+      }
+    }
+  };
+
+  // Populate form for editing
+  const handleEdit = (donation) => {
+    setEditingId(donation.id);
+    setDonorName(donation.donor_name);
+    setAmount(donation.amount);
+    setCity(donation.city || '');
+    setPhone(donation.phone || '');
+    setCategory(donation.category || 'बांधकाम निधी');
+    setPaymentMode(donation.payment_mode || 'UPI');
+    setTransactionRef(donation.transaction_ref || '');
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top form
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDonorName('');
+    setAmount('');
+    setCity('');
+    setPhone('');
+    setTransactionRef('');
+    setCategory('बांधकाम निधी');
+    setPaymentMode('UPI');
+  };
+
+  // Handle Delete
+  const handleDelete = async (id) => {
+    if (!window.confirm('तुम्हाला खात्री आहे का की तुम्ही ही नोंद हटवू इच्छिता? (Are you sure you want to delete this?)')) return;
+
+    const { error } = await supabase.from('mandir_donations').delete().eq('id', id);
     if (!error) {
-      setDonorName('');
-      setAmount('');
-      setCity('');
-      setPhone('');
-      setTransactionRef('');
+      showNotification('देणगी नोंद हटवली!');
       loadData();
-      showNotification('देणगी नोंद यशस्वीरित्या जोडली!');
     } else {
       showNotification('त्रुटी: ' + error.message, 'error');
     }
+  };
+
+  // Handle Bulk Upload via CSV (Export Excel as CSV and upload)
+  const handleBulkUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const rows = text.split('\n').filter((row) => row.trim() !== '');
+      
+      if (rows.length < 2) {
+        showNotification('CSV फाईल रिकामी आहे किंवा योग्य फॉरमॅट नाही.', 'error');
+        return;
+      }
+
+      // Read headers and map to expected column names
+      const headers = rows[0].split(',').map((h) => h.trim().toLowerCase());
+      
+      const dataToInsert = [];
+      for (let i = 1; i < rows.length; i++) {
+        // Simple split by comma. Note: Make sure Excel cells don't contain commas inside them.
+        const cols = rows[i].split(',').map((c) => c.trim());
+        const record = {};
+        
+        headers.forEach((header, index) => {
+          record[header] = cols[index];
+        });
+
+        // Basic validation: donor_name and amount are required
+        if (record.donor_name && record.amount) {
+          dataToInsert.push({
+            donor_name: record.donor_name,
+            amount: parseFloat(record.amount),
+            city: record.city || '',
+            phone: record.phone || '',
+            category: record.category || 'बांधकाम निधी',
+            payment_mode: record.payment_mode || 'रोख',
+            transaction_ref: record.transaction_ref || '',
+            is_verified: true,
+          });
+        }
+      }
+
+      if (dataToInsert.length > 0) {
+        const { error } = await supabase.from('mandir_donations').insert(dataToInsert);
+        if (!error) {
+          showNotification(`${dataToInsert.length} देणगीदारांच्या नोंदी यशस्वीरित्या अपलोड झाल्या!`);
+          loadData();
+        } else {
+          showNotification('अपलोड त्रुटी: ' + error.message, 'error');
+        }
+      } else {
+        showNotification('CSV मध्ये कोणताही वैध डेटा आढळला नाही.', 'error');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
   };
 
   const toggleVerification = async (id, currentStatus) => {
@@ -119,6 +227,7 @@ export default function AdminDonationsPage({ showNotification }) {
 
   return (
     <div className="space-y-6">
+      {/* Top Stats Banner */}
       <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white p-6 rounded-2xl flex flex-wrap justify-between items-center shadow-sm">
         <div>
           <p className="text-xs uppercase tracking-wider text-orange-200 font-semibold">एकूण पडताळणी झालेली देणगी रक्कम</p>
@@ -138,8 +247,9 @@ export default function AdminDonationsPage({ showNotification }) {
         </div>
       </div>
 
-      {/* QR Code Upload */}
+      {/* QR Code Upload Section */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        {/* ... (Existing QR Code upload UI kept exactly the same) ... */}
         <h2 className="text-base font-bold text-gray-800 mb-2 border-b pb-2">
           📱 मंदिर देणगी QR कोड व्यवस्थापन
         </h2>
@@ -185,30 +295,28 @@ export default function AdminDonationsPage({ showNotification }) {
         </div>
       </div>
 
-      {/* Leaderboard */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        <h3 className="font-bold text-gray-800 mb-3 flex items-center justify-between border-b pb-2">
-          <span>🏆 अग्रगण्य ५ दानशूर देणगीदार</span>
-          <span className="text-xs text-orange-600 font-semibold">वेबसाईटवर बॅनर स्वरूपात प्रदर्शित</span>
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-          {topDonors.map((d, index) => (
-            <div key={d.id} className="p-3 rounded-xl border text-center bg-amber-50/50 border-amber-200">
-              <span className="text-[11px] font-bold text-gray-500">मान #{index + 1}</span>
-              <p className="font-bold text-sm text-gray-800 truncate mt-1" title={d.donor_name}>{d.donor_name}</p>
-              <p className="text-xs text-gray-500">{d.city || 'मुंबई'}</p>
-              <p className="text-sm font-extrabold text-orange-700 mt-2">
-                ₹ {parseFloat(d.amount).toLocaleString('en-IN')}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Manual Entry Form */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-base font-bold text-gray-800 mb-4 border-b pb-2">नवीन देणगी नोंदवा</h2>
-        <form onSubmit={handleAddDonation} className="grid sm:grid-cols-3 gap-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 relative">
+        <div className="flex justify-between items-center mb-4 border-b pb-2">
+          <h2 className="text-base font-bold text-gray-800">
+            {editingId ? '✏️ देणगी नोंद अपडेट करा' : '➕ नवीन देणगी नोंदवा'}
+          </h2>
+
+          {/* Bulk Upload Section */}
+          {!editingId && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 cursor-pointer px-3 py-1.5 rounded-md border border-gray-300">
+                <span>Excel/CSV अपलोड करा</span>
+                <input type="file" accept=".csv" onChange={handleBulkUpload} className="hidden" />
+              </label>
+              <span className="text-[10px] text-gray-400 max-w-[150px] leading-tight hidden sm:block">
+                (Excel फाईल .csv फॉरमॅटमध्ये सेव्ह करून अपलोड करा. Headers: donor_name, amount, city, phone, category, payment_mode)
+              </span>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmitDonation} className="grid sm:grid-cols-3 gap-4">
           <input
             type="text"
             placeholder="देणगीदाराचे नाव *"
@@ -269,13 +377,23 @@ export default function AdminDonationsPage({ showNotification }) {
               className="w-2/3 px-3 py-2 border rounded-lg text-sm"
             />
           </div>
-          <div className="sm:col-span-3">
+          
+          <div className="sm:col-span-3 flex gap-3 mt-2">
             <button
               type="submit"
-              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-5 py-2.5 rounded-lg text-sm shadow"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-5 py-2.5 rounded-lg text-sm shadow transition"
             >
-              देणगी जतन करा
+              {editingId ? 'बदल जतन करा (Save Changes)' : 'देणगी जतन करा (Save)'}
             </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-5 py-2.5 rounded-lg text-sm shadow transition"
+              >
+                रद्द करा (Cancel)
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -283,39 +401,59 @@ export default function AdminDonationsPage({ showNotification }) {
       {/* Ledger Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 overflow-x-auto">
         <h3 className="font-bold text-gray-800 mb-4">सर्व देणगीदार यादी ({donations.length})</h3>
-        <table className="w-full text-left text-sm">
+        <table className="w-full text-left text-sm whitespace-nowrap">
           <thead>
             <tr className="border-b bg-gray-50 text-gray-600 text-xs uppercase font-semibold">
               <th className="py-2.5 px-3">नाव व संपर्क</th>
               <th className="py-2.5 px-3">गाव/शहर</th>
               <th className="py-2.5 px-3">निधी प्रकार</th>
-              <th className="py-2.5 px-3">पद्धत व UTR</th>
               <th className="py-2.5 px-3 text-right">रक्कम</th>
               <th className="py-2.5 px-3 text-center">पडताळणी</th>
+              <th className="py-2.5 px-3 text-center">कृती (Actions)</th>
             </tr>
           </thead>
           <tbody className="divide-y text-gray-700">
             {donations.map((d) => (
-              <tr key={d.id} className="hover:bg-gray-50">
+              <tr key={d.id} className="hover:bg-gray-50 transition-colors">
                 <td className="py-2.5 px-3">
                   <div className="font-semibold text-gray-800">{d.donor_name}</div>
                   {d.phone && <div className="text-xs text-gray-400">मो: {d.phone}</div>}
                 </td>
                 <td className="py-2.5 px-3 text-sm">{d.city || 'मुंबई'}</td>
-                <td className="py-2.5 px-3 text-xs">{d.category}</td>
-                <td className="py-2.5 px-3 text-xs">{d.payment_mode || 'UPI'}</td>
+                <td className="py-2.5 px-3 text-xs">
+                  {d.category}
+                  <div className="text-[10px] text-gray-400 mt-0.5">{d.payment_mode || 'UPI'}</div>
+                </td>
                 <td className="py-2.5 px-3 text-right font-bold text-orange-700">
                   ₹ {parseFloat(d.amount).toLocaleString('en-IN')}
                 </td>
                 <td className="py-2.5 px-3 text-center">
                   <button
                     onClick={() => toggleVerification(d.id, d.is_verified)}
-                    className={`text-xs px-2.5 py-1 rounded-full font-semibold transition ${
-                      d.is_verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                    className={`text-[11px] px-2.5 py-1.5 rounded-full font-semibold transition ${
+                      d.is_verified ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
                     }`}
                   >
-                    {d.is_verified ? 'पूर्ण ✓' : 'अपूर्ण'}
+                    {d.is_verified ? 'पूर्ण ✓' : 'अपूर्ण ⚠️'}
                   </button>
+                </td>
+                <td className="py-2.5 px-3 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => handleEdit(d)}
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition"
+                      title="अपडेट करा (Edit)"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => handleDelete(d.id)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition"
+                      title="डिलीट करा (Delete)"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -324,4 +462,4 @@ export default function AdminDonationsPage({ showNotification }) {
       </div>
     </div>
   );
-}
+          }
