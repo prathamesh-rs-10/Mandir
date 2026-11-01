@@ -5,9 +5,10 @@ export default function AdminDonationsPage({ showNotification }) {
   const [donations, setDonations] = useState([]);
   const [contactId, setContactId] = useState(null);
 
-  // Bank & UPI Settings States
+  // Bank, QR & UPI States
   const [qrUrl, setQrUrl] = useState('');
   const [uploadingQr, setUploadingQr] = useState(false);
+  const [accountHolderName, setAccountHolderName] = useState('');
   const [bankName, setBankName] = useState('');
   const [bankAccNo, setBankAccNo] = useState('');
   const [bankIfsc, setBankIfsc] = useState('');
@@ -25,16 +26,20 @@ export default function AdminDonationsPage({ showNotification }) {
   const [category, setCategory] = useState('बांधकाम निधी');
   const [paymentMode, setPaymentMode] = useState('UPI');
   const [transactionRef, setTransactionRef] = useState('');
+  const [receiptNo, setReceiptNo] = useState('');
+  const [message, setMessage] = useState('');
+  const [isVisible, setIsVisible] = useState(true);
 
   const loadData = async () => {
-    // 1. Load donations ledger
+    // 1. Fetch donations
     const { data: donData } = await supabase
       .from('mandir_donations')
       .select('*')
       .order('created_at', { ascending: false });
+
     if (donData) setDonations(donData);
 
-    // 2. Load banking & QR details
+    // 2. Fetch contact info, bank details & QR code
     const { data: infoData } = await supabase
       .from('mandir_contact_info')
       .select('*')
@@ -44,6 +49,7 @@ export default function AdminDonationsPage({ showNotification }) {
     if (infoData) {
       setContactId(infoData.id);
       setQrUrl(infoData.donation_qr_url || '');
+      setAccountHolderName(infoData.bank_acc_holder_name || infoData.trust_name || '');
       setBankName(infoData.bank_name || '');
       setBankAccNo(infoData.bank_acc_no || '');
       setBankIfsc(infoData.bank_ifsc || '');
@@ -57,7 +63,7 @@ export default function AdminDonationsPage({ showNotification }) {
     loadData();
   }, []);
 
-  // Handle QR Upload
+  // Upload QR to Supabase Storage
   const handleQrUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -98,13 +104,15 @@ export default function AdminDonationsPage({ showNotification }) {
     }
   };
 
-  // Handle Save Bank & UPI Info
+  // Save Bank, UPI & Account Name
   const handleSaveBankInfo = async (e) => {
     e.preventDefault();
     setSavingBankInfo(true);
 
     const payload = {
       id: contactId || 1,
+      bank_acc_holder_name: accountHolderName,
+      trust_name: accountHolderName, // Kept in sync so frontend displays correctly
       bank_name: bankName,
       bank_acc_no: bankAccNo,
       bank_ifsc: bankIfsc,
@@ -119,28 +127,36 @@ export default function AdminDonationsPage({ showNotification }) {
     setSavingBankInfo(false);
 
     if (!error) {
-      showNotification('बँक खाते, UPI व QR तपशील यशस्वीरित्या सेव्ह झाले!');
+      showNotification('बँक खाते, खातेधारकाचे नाव व UPI माहिती यशस्वीरित्या सेव्ह झाली!');
     } else {
       showNotification('त्रुटी: ' + error.message, 'error');
     }
   };
 
-  // Handle Add & Update Manual Donation
+  // Manual Donation Add / Update
   const handleSubmitDonation = async (e) => {
     e.preventDefault();
 
     const payload = {
       donor_name: donorName,
       amount: parseFloat(amount),
-      city,
-      phone,
+      city: city || 'मुंबई',
+      phone: phone || null,
       category,
       payment_mode: paymentMode,
-      transaction_ref: transactionRef,
+      transaction_ref: transactionRef || null,
+      receipt_no: receiptNo || null,
+      message: message || null,
+      is_visible: isVisible,
+      updated_at: new Date().toISOString(),
     };
 
     if (editingId) {
-      const { error } = await supabase.from('mandir_donations').update(payload).eq('id', editingId);
+      const { error } = await supabase
+        .from('mandir_donations')
+        .update(payload)
+        .eq('id', editingId);
+
       if (!error) {
         showNotification('देणगी नोंद यशस्वीरित्या अपडेट केली!');
         cancelEdit();
@@ -151,8 +167,9 @@ export default function AdminDonationsPage({ showNotification }) {
     } else {
       payload.is_verified = true;
       const { error } = await supabase.from('mandir_donations').insert([payload]);
+
       if (!error) {
-        showNotification('देणगी नोंद यशस्वीरित्या जोडली!');
+        showNotification('नवीन देणगी नोंद यशस्वीरित्या जोडली!');
         cancelEdit();
         loadData();
       } else {
@@ -163,13 +180,16 @@ export default function AdminDonationsPage({ showNotification }) {
 
   const handleEdit = (donation) => {
     setEditingId(donation.id);
-    setDonorName(donation.donor_name);
-    setAmount(donation.amount);
+    setDonorName(donation.donor_name || '');
+    setAmount(donation.amount || '');
     setCity(donation.city || '');
     setPhone(donation.phone || '');
     setCategory(donation.category || 'बांधकाम निधी');
     setPaymentMode(donation.payment_mode || 'UPI');
     setTransactionRef(donation.transaction_ref || '');
+    setReceiptNo(donation.receipt_no || '');
+    setMessage(donation.message || '');
+    setIsVisible(donation.is_visible !== false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -180,12 +200,15 @@ export default function AdminDonationsPage({ showNotification }) {
     setCity('');
     setPhone('');
     setTransactionRef('');
+    setReceiptNo('');
+    setMessage('');
+    setIsVisible(true);
     setCategory('बांधकाम निधी');
     setPaymentMode('UPI');
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('तुम्हाला खात्री आहे का की तुम्ही ही नोंद हटवू इच्छिता?')) return;
+    if (!window.confirm('तुम्हाला खात्री आहे का की तुम्ही ही देणगी नोंद हटवू इच्छिता?')) return;
 
     const { error } = await supabase.from('mandir_donations').delete().eq('id', id);
     if (!error) {
@@ -226,12 +249,14 @@ export default function AdminDonationsPage({ showNotification }) {
           dataToInsert.push({
             donor_name: record.donor_name,
             amount: parseFloat(record.amount),
-            city: record.city || '',
-            phone: record.phone || '',
+            city: record.city || 'मुंबई',
+            phone: record.phone || null,
             category: record.category || 'बांधकाम निधी',
             payment_mode: record.payment_mode || 'रोख',
-            transaction_ref: record.transaction_ref || '',
+            transaction_ref: record.transaction_ref || null,
+            receipt_no: record.receipt_no || null,
             is_verified: true,
+            is_visible: true,
           });
         }
       }
@@ -256,6 +281,12 @@ export default function AdminDonationsPage({ showNotification }) {
     await supabase.from('mandir_donations').update({ is_verified: !currentStatus }).eq('id', id);
     loadData();
     showNotification('देणगी पडताळणी स्थिती बदलली!');
+  };
+
+  const toggleVisibility = async (id, currentVisibility) => {
+    await supabase.from('mandir_donations').update({ is_visible: !currentVisibility }).eq('id', id);
+    loadData();
+    showNotification('वेबसाइट दृश्यमानता बदलली!');
   };
 
   const totalAmount = donations
@@ -286,12 +317,12 @@ export default function AdminDonationsPage({ showNotification }) {
         </div>
       </div>
 
-      {/* ─── BANK DETAILS & QR CODE MANAGEMENT ─── */}
+      {/* ─── BANK DETAILS, ACCOUNT HOLDER & QR CODE MANAGEMENT ─── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3">
           <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
             <span>🏛️</span>
-            <span>बँक खाते, देणगी UPI व QR कोड व्यवस्थापन</span>
+            <span>बँक खाते, खातेदार नाव व QR कोड व्यवस्थापन</span>
           </h2>
           <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer bg-orange-50 px-3 py-1 rounded-full border border-orange-200">
             <input
@@ -344,42 +375,34 @@ export default function AdminDonationsPage({ showNotification }) {
           </div>
         </div>
 
-        {/* Bank & UPI Input Form */}
+        {/* Bank & UPI Input Form with Account Name */}
         <form onSubmit={handleSaveBankInfo} className="space-y-4 pt-2">
           <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-            💳 बँक खाते व UPI तपशील
+            💳 बँक खाते, खातेदार नाव व UPI तपशील
           </h3>
-          <div className="grid md:grid-cols-4 gap-4">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                खातेधारकाचे नाव (Account Name / Trust Name) *
+              </label>
+              <input
+                type="text"
+                required
+                value={accountHolderName}
+                onChange={(e) => setAccountHolderName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-semibold"
+                placeholder="उदा. श्री काळंबादेवी मंदिर जीर्णोद्धार कमिटी"
+              />
+            </div>
+
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">बँकेचे नाव</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">बँकेचे नाव (Bank Name)</label>
               <input
                 type="text"
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg text-sm"
-                placeholder="State Bank of India"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">खाते क्रमांक</label>
-              <input
-                type="text"
-                value={bankAccNo}
-                onChange={(e) => setBankAccNo(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
-                placeholder="30123456789"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">IFSC कोड</label>
-              <input
-                type="text"
-                value={bankIfsc}
-                onChange={(e) => setBankIfsc(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm font-mono uppercase"
-                placeholder="SBIN0001234"
+                placeholder="उदा. State Bank of India"
               />
             </div>
 
@@ -390,18 +413,40 @@ export default function AdminDonationsPage({ showNotification }) {
                 value={bankBranch}
                 onChange={(e) => setBankBranch(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg text-sm"
-                placeholder="मुख्य शाखा"
+                placeholder="उदा. मुंबई"
               />
             </div>
 
-            <div className="md:col-span-4">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">खाते क्रमांक (Account Number)</label>
+              <input
+                type="text"
+                value={bankAccNo}
+                onChange={(e) => setBankAccNo(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                placeholder="उदा. 30123456789"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">IFSC कोड</label>
+              <input
+                type="text"
+                value={bankIfsc}
+                onChange={(e) => setBankIfsc(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-mono uppercase"
+                placeholder="उदा. SBIN0001234"
+              />
+            </div>
+
+            <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">अधिकृत देणगी UPI ID</label>
               <input
                 type="text"
                 value={upiId}
                 onChange={(e) => setUpiId(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
-                placeholder="mandirtrust@sbi"
+                placeholder="उदा. mandirtrust@sbi"
               />
             </div>
           </div>
@@ -410,9 +455,9 @@ export default function AdminDonationsPage({ showNotification }) {
             <button
               type="submit"
               disabled={savingBankInfo}
-              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-5 py-2 rounded-lg text-sm shadow transition disabled:opacity-50"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-6 py-2 rounded-lg text-sm shadow transition disabled:opacity-50"
             >
-              {savingBankInfo ? 'जतन करत आहे...' : 'बँक व UPI माहिती सेव्ह करा'}
+              {savingBankInfo ? 'जतन करत आहे...' : 'बँक, खातेदार व UPI माहिती सेव्ह करा'}
             </button>
           </div>
         </form>
@@ -500,22 +545,50 @@ export default function AdminDonationsPage({ showNotification }) {
             />
           </div>
 
-          <div className="sm:col-span-3 flex gap-3 mt-2">
-            <button
-              type="submit"
-              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-5 py-2.5 rounded-lg text-sm shadow transition"
-            >
-              {editingId ? 'बदल जतन करा (Save Changes)' : 'देणगी जतन करा (Save)'}
-            </button>
-            {editingId && (
+          <input
+            type="text"
+            placeholder="पावती क्र. (Receipt No.)"
+            value={receiptNo}
+            onChange={(e) => setReceiptNo(e.target.value)}
+            className="px-3 py-2 border rounded-lg text-sm"
+          />
+
+          <input
+            type="text"
+            placeholder="संदेश / प्रार्थना (Optional)"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="px-3 py-2 border rounded-lg text-sm sm:col-span-2"
+          />
+
+          <div className="sm:col-span-3 flex items-center justify-between mt-2 pt-2 border-t">
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isVisible}
+                onChange={(e) => setIsVisible(e.target.checked)}
+                className="h-4 w-4 text-orange-600 rounded"
+              />
+              <span>ही देणगी वेबसाइटवरील यादीत सार्वजनिकपणे दाखवा (Visible)</span>
+            </label>
+
+            <div className="flex gap-3">
               <button
-                type="button"
-                onClick={cancelEdit}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-5 py-2.5 rounded-lg text-sm shadow transition"
+                type="submit"
+                className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-5 py-2 rounded-lg text-sm shadow transition"
               >
-                रद्द करा (Cancel)
+                {editingId ? 'बदल जतन करा (Save Changes)' : 'देणगी जतन करा (Save)'}
               </button>
-            )}
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-5 py-2 rounded-lg text-sm shadow transition"
+                >
+                  रद्द करा (Cancel)
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>
@@ -529,7 +602,9 @@ export default function AdminDonationsPage({ showNotification }) {
               <th className="py-2.5 px-3">नाव व संपर्क</th>
               <th className="py-2.5 px-3">गाव/शहर</th>
               <th className="py-2.5 px-3">निधी प्रकार</th>
+              <th className="py-2.5 px-3">पावती / UTR</th>
               <th className="py-2.5 px-3 text-right">रक्कम</th>
+              <th className="py-2.5 px-3 text-center">दृश्यमानता</th>
               <th className="py-2.5 px-3 text-center">पडताळणी</th>
               <th className="py-2.5 px-3 text-center">कृती (Actions)</th>
             </tr>
@@ -546,8 +621,22 @@ export default function AdminDonationsPage({ showNotification }) {
                   {d.category}
                   <div className="text-[10px] text-gray-400 mt-0.5">{d.payment_mode || 'UPI'}</div>
                 </td>
+                <td className="py-2.5 px-3 text-xs">
+                  {d.receipt_no && <div className="font-mono text-orange-800">पावती: {d.receipt_no}</div>}
+                  {d.transaction_ref && <div className="text-[10px] text-gray-400 truncate max-w-[120px]">Ref: {d.transaction_ref}</div>}
+                </td>
                 <td className="py-2.5 px-3 text-right font-bold text-orange-700">
                   ₹ {parseFloat(d.amount).toLocaleString('en-IN')}
+                </td>
+                <td className="py-2.5 px-3 text-center">
+                  <button
+                    onClick={() => toggleVisibility(d.id, d.is_visible !== false)}
+                    className={`text-[11px] px-2 py-1 rounded-full font-semibold transition ${
+                      d.is_visible !== false ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {d.is_visible !== false ? 'दाखवले 👁️' : 'लपवले 🙈'}
+                  </button>
                 </td>
                 <td className="py-2.5 px-3 text-center">
                   <button
