@@ -137,7 +137,7 @@ export default function App() {
         {/* Top Header Bar */}
         <div className="bg-orange-900 text-orange-100 px-4 sm:px-8 py-2 text-xs flex justify-between items-center border-b border-orange-800">
           <span className="font-medium tracking-wide">
-            ॥ श्री काळंबादेवी प्रसन्न • शेरपे, मुंबई ॥
+            ॥ श्री काळंबादेवी प्रसन्न • शेर्पे, मुंबई ॥
           </span>
           <div>
             {adminUser ? (
