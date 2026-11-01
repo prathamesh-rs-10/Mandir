@@ -107,17 +107,17 @@ export default function HomePage({ onNavigate }) {
       {/* 1. Hero Banner */}
       {homeData.show_hero_section !== false && (
         <section className="relative overflow-hidden bg-gradient-to-b from-orange-700 via-amber-700 to-amber-800 text-white py-24 px-4 text-center shadow-xl">
-          {/* Blurred Background Layer */}
+          {/* Background Layer with reduced blur and scale */}
           {homeData.hero_image_url && (
             <div
-              className="absolute inset-0 bg-cover bg-center scale-110 filter blur-md sm:blur-lg opacity-40 transition-all duration-700 pointer-events-none"
+              className="absolute inset-0 bg-cover bg-center scale-105 filter blur-xs sm:blur-sm opacity-50 transition-all duration-700 pointer-events-none"
               style={{ backgroundImage: `url("${homeData.hero_image_url}")` }}
               aria-hidden="true"
             />
           )}
 
-          {/* Dark Tint Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-orange-950/40 to-black/60 pointer-events-none" />
+          {/* Dark Tint Overlay to maintain text contrast */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-orange-950/45 to-black/65 pointer-events-none" />
 
           {/* Hero Content */}
           <div className="relative z-10 max-w-4xl mx-auto space-y-5">
