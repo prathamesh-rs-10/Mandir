@@ -6,6 +6,7 @@ const EMPTY_STATE = {
   hero_subtitle: "",
   location_tag: "",
   slogan: "",
+  hero_image_url: "",
   editorial_title: "",
   editorial_quote: "",
   editorial_body: "",
@@ -22,6 +23,15 @@ export default function AdminHomePage({ showNotification }) {
   const [formData, setFormData] = useState(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const notify = (message, type = "success") => {
+    if (typeof showNotification === "function") {
+      showNotification(message, type);
+    } else {
+      alert(message);
+    }
+  };
 
   useEffect(() => {
     supabase
@@ -37,6 +47,7 @@ export default function AdminHomePage({ showNotification }) {
             hero_subtitle: data.hero_subtitle ?? "",
             location_tag: data.location_tag ?? "",
             slogan: data.slogan ?? "",
+            hero_image_url: data.hero_image_url ?? "",
             editorial_title: data.editorial_title ?? "",
             editorial_quote: data.editorial_quote ?? "",
             editorial_body: data.editorial_body ?? "",
@@ -79,6 +90,40 @@ export default function AdminHomePage({ showNotification }) {
     }));
   };
 
+  // Upload hero background image to Supabase Storage
+  const handleHeroImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingImage(true);
+      const fileExt = file.name.split(".").pop();
+      const fileName = `hero-bg-${Date.now()}.${fileExt}`;
+      const filePath = `home/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("mandir_assets")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("mandir_assets")
+        .getPublicUrl(filePath);
+
+      handleFieldChange("hero_image_url", publicUrlData.publicUrl);
+      notify("प्रतिमा यशस्वीरीत्या अपलोड झाली!");
+    } catch (err) {
+      notify("प्रतिमा अपलोड करताना त्रुटी: " + err.message, "error");
+    } finally {
+      setUploadingImage(false);
+      // Reset input element value so the same file can be re-selected if needed
+      e.target.value = "";
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -89,6 +134,7 @@ export default function AdminHomePage({ showNotification }) {
       hero_subtitle: formData.hero_subtitle,
       location_tag: formData.location_tag,
       slogan: formData.slogan,
+      hero_image_url: formData.hero_image_url,
       editorial_title: formData.editorial_title,
       editorial_quote: formData.editorial_quote,
       editorial_body: formData.editorial_body,
@@ -108,17 +154,9 @@ export default function AdminHomePage({ showNotification }) {
     setLoading(false);
 
     if (!error) {
-      if (typeof showNotification === "function") {
-        showNotification("मुख्य पृष्ठ माहिती यशस्वीरित्या सेव्ह झाली!");
-      } else {
-        alert("मुख्य पृष्ठ माहिती यशस्वीरित्या सेव्ह झाली!");
-      }
+      notify("मुख्य पृष्ठ माहिती यशस्वीरित्या सेव्ह झाली!");
     } else {
-      if (typeof showNotification === "function") {
-        showNotification("त्रुटी: " + error.message, "error");
-      } else {
-        alert("त्रुटी: " + error.message);
-      }
+      notify("त्रुटी: " + error.message, "error");
     }
   };
 
@@ -144,10 +182,87 @@ export default function AdminHomePage({ showNotification }) {
 
       <form onSubmit={handleSave} className="space-y-8">
         {/* Section 1: Hero Banner */}
-        <div className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 space-y-4">
+        <div className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 space-y-5">
           <h3 className="text-base font-bold text-orange-800 border-b pb-2">
             १. मुख्य बॅनर (Hero Section)
           </h3>
+
+          {/* Hero Background Image Picker & Direct URL */}
+          <div className="bg-orange-50/50 border border-orange-200/80 rounded-xl p-4 space-y-3">
+            <label className="block text-xs font-bold text-stone-800">
+              मुख्य पार्श्वभूमी प्रतिमा (Hero Background Blur Image)
+            </label>
+            <p className="text-xs text-stone-500">
+              ही प्रतिमा मुख्य पृष्ठावरील बॅनरच्या मागे ब्लर (अस्पष्ट) स्वरूपात दिसेल.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+              <div>
+                <span className="block text-xs text-stone-600 mb-1 font-medium">
+                  डिव्हाइसवरून प्रतिमा निवडा:
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={uploadingImage}
+                  onChange={handleHeroImageUpload}
+                  className="block w-full text-xs text-stone-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-orange-600 file:text-white hover:file:bg-orange-700 cursor-pointer disabled:opacity-50"
+                />
+                {uploadingImage && (
+                  <p className="text-xs text-orange-700 font-medium mt-1">
+                    प्रतिमा अपलोड होत आहे...
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <span className="block text-xs text-stone-600 mb-1 font-medium">
+                  किंवा थेट प्रतिमेची लिंक (Direct Image URL):
+                </span>
+                <input
+                  type="url"
+                  placeholder="https://example.com/photo.jpg"
+                  value={formData.hero_image_url}
+                  onChange={(e) =>
+                    handleFieldChange("hero_image_url", e.target.value)
+                  }
+                  className="w-full px-3 py-2 border rounded-lg text-xs bg-white focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Preview Box */}
+            {formData.hero_image_url && (
+              <div className="pt-2 flex items-center gap-4">
+                <div className="relative w-36 h-20 rounded-lg overflow-hidden border border-stone-300 bg-stone-100 shadow-inner">
+                  <img
+                    src={formData.hero_image_url}
+                    alt="Hero Preview"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = "https://placehold.co/150x100?text=Invalid+URL";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange("hero_image_url", "")}
+                    className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-700 transition"
+                    title="प्रतिमा काढा"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="text-xs text-stone-600">
+                  <span className="font-semibold text-stone-700">सध्या निवडलेली प्रतिमा</span>
+                  <p className="text-[11px] text-stone-400 break-all max-w-md">
+                    {formData.hero_image_url}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-stone-700 mb-1">
@@ -409,7 +524,7 @@ export default function AdminHomePage({ showNotification }) {
           </p>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || uploadingImage}
             className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-md"
           >
             {loading ? "जतन करत आहे..." : "सर्व बदल सेव्ह करा"}
