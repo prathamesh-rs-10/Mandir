@@ -3,11 +3,20 @@ import { supabase } from '../supabaseClient';
 
 export default function AdminDonationsPage({ showNotification }) {
   const [donations, setDonations] = useState([]);
-  const [qrUrl, setQrUrl] = useState('');
-  const [uploadingQr, setUploadingQr] = useState(false);
   const [contactId, setContactId] = useState(null);
 
-  // Form States
+  // Bank & UPI Settings States
+  const [qrUrl, setQrUrl] = useState('');
+  const [uploadingQr, setUploadingQr] = useState(false);
+  const [bankName, setBankName] = useState('');
+  const [bankAccNo, setBankAccNo] = useState('');
+  const [bankIfsc, setBankIfsc] = useState('');
+  const [bankBranch, setBankBranch] = useState('');
+  const [upiId, setUpiId] = useState('');
+  const [showBankingSection, setShowBankingSection] = useState(true);
+  const [savingBankInfo, setSavingBankInfo] = useState(false);
+
+  // Donation Form States
   const [editingId, setEditingId] = useState(null);
   const [donorName, setDonorName] = useState('');
   const [amount, setAmount] = useState('');
@@ -18,21 +27,29 @@ export default function AdminDonationsPage({ showNotification }) {
   const [transactionRef, setTransactionRef] = useState('');
 
   const loadData = async () => {
+    // 1. Load donations ledger
     const { data: donData } = await supabase
       .from('mandir_donations')
       .select('*')
       .order('created_at', { ascending: false });
     if (donData) setDonations(donData);
 
+    // 2. Load banking & QR details
     const { data: infoData } = await supabase
       .from('mandir_contact_info')
-      .select('id, donation_qr_url')
+      .select('*')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (infoData) {
       setContactId(infoData.id);
       setQrUrl(infoData.donation_qr_url || '');
+      setBankName(infoData.bank_name || '');
+      setBankAccNo(infoData.bank_acc_no || '');
+      setBankIfsc(infoData.bank_ifsc || '');
+      setBankBranch(infoData.bank_branch || '');
+      setUpiId(infoData.upi_id || '');
+      setShowBankingSection(infoData.show_banking_section !== false);
     }
   };
 
@@ -40,6 +57,7 @@ export default function AdminDonationsPage({ showNotification }) {
     loadData();
   }, []);
 
+  // Handle QR Upload
   const handleQrUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -67,7 +85,11 @@ export default function AdminDonationsPage({ showNotification }) {
 
     const { error: dbError } = await supabase
       .from('mandir_contact_info')
-      .upsert({ id: contactId || 1, donation_qr_url: publicUrl, updated_at: new Date() });
+      .upsert({
+        id: contactId || 1,
+        donation_qr_url: publicUrl,
+        updated_at: new Date().toISOString(),
+      });
 
     setUploadingQr(false);
     if (!dbError) {
@@ -76,10 +98,37 @@ export default function AdminDonationsPage({ showNotification }) {
     }
   };
 
-  // Handle Add & Update
+  // Handle Save Bank & UPI Info
+  const handleSaveBankInfo = async (e) => {
+    e.preventDefault();
+    setSavingBankInfo(true);
+
+    const payload = {
+      id: contactId || 1,
+      bank_name: bankName,
+      bank_acc_no: bankAccNo,
+      bank_ifsc: bankIfsc,
+      bank_branch: bankBranch,
+      upi_id: upiId,
+      show_banking_section: showBankingSection,
+      donation_qr_url: qrUrl,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('mandir_contact_info').upsert(payload);
+    setSavingBankInfo(false);
+
+    if (!error) {
+      showNotification('बँक खाते, UPI व QR तपशील यशस्वीरित्या सेव्ह झाले!');
+    } else {
+      showNotification('त्रुटी: ' + error.message, 'error');
+    }
+  };
+
+  // Handle Add & Update Manual Donation
   const handleSubmitDonation = async (e) => {
     e.preventDefault();
-    
+
     const payload = {
       donor_name: donorName,
       amount: parseFloat(amount),
@@ -91,7 +140,6 @@ export default function AdminDonationsPage({ showNotification }) {
     };
 
     if (editingId) {
-      // Update existing record
       const { error } = await supabase.from('mandir_donations').update(payload).eq('id', editingId);
       if (!error) {
         showNotification('देणगी नोंद यशस्वीरित्या अपडेट केली!');
@@ -101,7 +149,6 @@ export default function AdminDonationsPage({ showNotification }) {
         showNotification('त्रुटी: ' + error.message, 'error');
       }
     } else {
-      // Create new record
       payload.is_verified = true;
       const { error } = await supabase.from('mandir_donations').insert([payload]);
       if (!error) {
@@ -114,7 +161,6 @@ export default function AdminDonationsPage({ showNotification }) {
     }
   };
 
-  // Populate form for editing
   const handleEdit = (donation) => {
     setEditingId(donation.id);
     setDonorName(donation.donor_name);
@@ -124,7 +170,7 @@ export default function AdminDonationsPage({ showNotification }) {
     setCategory(donation.category || 'बांधकाम निधी');
     setPaymentMode(donation.payment_mode || 'UPI');
     setTransactionRef(donation.transaction_ref || '');
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const cancelEdit = () => {
@@ -138,9 +184,8 @@ export default function AdminDonationsPage({ showNotification }) {
     setPaymentMode('UPI');
   };
 
-  // Handle Delete
   const handleDelete = async (id) => {
-    if (!window.confirm('तुम्हाला खात्री आहे का की तुम्ही ही नोंद हटवू इच्छिता? (Are you sure you want to delete this?)')) return;
+    if (!window.confirm('तुम्हाला खात्री आहे का की तुम्ही ही नोंद हटवू इच्छिता?')) return;
 
     const { error } = await supabase.from('mandir_donations').delete().eq('id', id);
     if (!error) {
@@ -151,7 +196,7 @@ export default function AdminDonationsPage({ showNotification }) {
     }
   };
 
-  // Handle Bulk Upload via CSV (Export Excel as CSV and upload)
+  // CSV Bulk Upload
   const handleBulkUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -160,26 +205,23 @@ export default function AdminDonationsPage({ showNotification }) {
     reader.onload = async (event) => {
       const text = event.target.result;
       const rows = text.split('\n').filter((row) => row.trim() !== '');
-      
+
       if (rows.length < 2) {
         showNotification('CSV फाईल रिकामी आहे किंवा योग्य फॉरमॅट नाही.', 'error');
         return;
       }
 
-      // Read headers and map to expected column names
       const headers = rows[0].split(',').map((h) => h.trim().toLowerCase());
-      
       const dataToInsert = [];
+
       for (let i = 1; i < rows.length; i++) {
-        // Simple split by comma. Note: Make sure Excel cells don't contain commas inside them.
         const cols = rows[i].split(',').map((c) => c.trim());
         const record = {};
-        
+
         headers.forEach((header, index) => {
           record[header] = cols[index];
         });
 
-        // Basic validation: donor_name and amount are required
         if (record.donor_name && record.amount) {
           dataToInsert.push({
             donor_name: record.donor_name,
@@ -207,7 +249,7 @@ export default function AdminDonationsPage({ showNotification }) {
       }
     };
     reader.readAsText(file);
-    e.target.value = ''; // Reset input
+    e.target.value = '';
   };
 
   const toggleVerification = async (id, currentStatus) => {
@@ -220,17 +262,14 @@ export default function AdminDonationsPage({ showNotification }) {
     .filter((d) => d.is_verified)
     .reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
 
-  const topDonors = [...donations]
-    .filter((d) => d.is_verified)
-    .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
-    .slice(0, 5);
-
   return (
     <div className="space-y-6">
       {/* Top Stats Banner */}
       <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white p-6 rounded-2xl flex flex-wrap justify-between items-center shadow-sm">
         <div>
-          <p className="text-xs uppercase tracking-wider text-orange-200 font-semibold">एकूण पडताळणी झालेली देणगी रक्कम</p>
+          <p className="text-xs uppercase tracking-wider text-orange-200 font-semibold">
+            एकूण पडताळणी झालेली देणगी रक्कम
+          </p>
           <p className="text-3xl sm:text-4xl font-extrabold mt-1">₹ {totalAmount.toLocaleString('en-IN')}</p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-6 text-right">
@@ -247,52 +286,136 @@ export default function AdminDonationsPage({ showNotification }) {
         </div>
       </div>
 
-      {/* QR Code Upload Section */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        {/* ... (Existing QR Code upload UI kept exactly the same) ... */}
-        <h2 className="text-base font-bold text-gray-800 mb-2 border-b pb-2">
-          📱 मंदिर देणगी QR कोड व्यवस्थापन
-        </h2>
-        <div className="flex flex-col sm:flex-row items-center gap-6 mt-4">
-          <div className="w-40 h-40 bg-gray-50 border-2 border-dashed border-orange-300 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-            {qrUrl ? (
-              <img src={qrUrl} alt="Donation QR Code" className="w-full h-full object-contain p-2" />
-            ) : (
-              <span className="text-xs text-gray-400 text-center px-2">QR कोड उपलब्ध नाही</span>
-            )}
-          </div>
-          <div className="space-y-3 flex-1 w-full">
+      {/* ─── BANK DETAILS & QR CODE MANAGEMENT ─── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3">
+          <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+            <span>🏛️</span>
+            <span>बँक खाते, देणगी UPI व QR कोड व्यवस्थापन</span>
+          </h2>
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer bg-orange-50 px-3 py-1 rounded-full border border-orange-200">
             <input
-              type="file"
-              accept="image/*"
-              onChange={handleQrUpload}
-              disabled={uploadingQr}
-              className="text-xs text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+              type="checkbox"
+              checked={showBankingSection}
+              onChange={(e) => setShowBankingSection(e.target.checked)}
+              className="h-4 w-4 text-orange-600 rounded"
             />
-            {uploadingQr && <p className="text-xs text-orange-600 animate-pulse font-medium">QR कोड अपलोड होत आहे...</p>}
-            <div className="flex gap-2 pt-2">
-              <input
-                type="url"
-                placeholder="किंवा इमेज URL पेस्ट करा"
-                value={qrUrl}
-                onChange={(e) => setQrUrl(e.target.value)}
-                className="flex-1 px-3 py-1.5 border rounded-lg text-xs"
-              />
-              <button
-                type="button"
-                onClick={async () => {
-                  await supabase
-                    .from('mandir_contact_info')
-                    .upsert({ id: contactId || 1, donation_qr_url: qrUrl, updated_at: new Date() });
-                  showNotification('QR URL सेव्ह झाली!');
-                }}
-                className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
-              >
-                सेव्ह
-              </button>
+            <span>हा विभाग वेबसाइटवर दाखवा</span>
+          </label>
+        </div>
+
+        {/* QR Code Upload Subsection */}
+        <div>
+          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">
+            📱 अधिकृत देणगी QR कोड
+          </h3>
+          <div className="flex flex-col sm:flex-row items-center gap-6 bg-gray-50/50 p-4 rounded-xl border border-gray-200">
+            <div className="w-40 h-40 bg-white border-2 border-dashed border-orange-300 rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+              {qrUrl ? (
+                <img src={qrUrl} alt="Donation QR Code" className="w-full h-full object-contain p-2" />
+              ) : (
+                <span className="text-xs text-gray-400 text-center px-2">QR कोड उपलब्ध नाही</span>
+              )}
+            </div>
+            <div className="space-y-3 flex-1 w-full">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">नवीन QR कोड इमेज अपलोड करा:</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleQrUpload}
+                  disabled={uploadingQr}
+                  className="text-xs text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                />
+                {uploadingQr && <p className="text-xs text-orange-600 animate-pulse font-medium mt-1">QR कोड अपलोड होत आहे...</p>}
+              </div>
+
+              <div className="pt-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">किंवा थेट इमेज URL प्रविष्ट करा:</label>
+                <input
+                  type="url"
+                  placeholder="https://.../qr.png"
+                  value={qrUrl}
+                  onChange={(e) => setQrUrl(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-xs"
+                />
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Bank & UPI Input Form */}
+        <form onSubmit={handleSaveBankInfo} className="space-y-4 pt-2">
+          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+            💳 बँक खाते व UPI तपशील
+          </h3>
+          <div className="grid md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">बँकेचे नाव</label>
+              <input
+                type="text"
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="State Bank of India"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">खाते क्रमांक</label>
+              <input
+                type="text"
+                value={bankAccNo}
+                onChange={(e) => setBankAccNo(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                placeholder="30123456789"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">IFSC कोड</label>
+              <input
+                type="text"
+                value={bankIfsc}
+                onChange={(e) => setBankIfsc(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-mono uppercase"
+                placeholder="SBIN0001234"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">शाखा (Branch)</label>
+              <input
+                type="text"
+                value={bankBranch}
+                onChange={(e) => setBankBranch(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="मुख्य शाखा"
+              />
+            </div>
+
+            <div className="md:col-span-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">अधिकृत देणगी UPI ID</label>
+              <input
+                type="text"
+                value={upiId}
+                onChange={(e) => setUpiId(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                placeholder="mandirtrust@sbi"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              disabled={savingBankInfo}
+              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-5 py-2 rounded-lg text-sm shadow transition disabled:opacity-50"
+            >
+              {savingBankInfo ? 'जतन करत आहे...' : 'बँक व UPI माहिती सेव्ह करा'}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Manual Entry Form */}
@@ -302,7 +425,6 @@ export default function AdminDonationsPage({ showNotification }) {
             {editingId ? '✏️ देणगी नोंद अपडेट करा' : '➕ नवीन देणगी नोंदवा'}
           </h2>
 
-          {/* Bulk Upload Section */}
           {!editingId && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 cursor-pointer px-3 py-1.5 rounded-md border border-gray-300">
@@ -310,7 +432,7 @@ export default function AdminDonationsPage({ showNotification }) {
                 <input type="file" accept=".csv" onChange={handleBulkUpload} className="hidden" />
               </label>
               <span className="text-[10px] text-gray-400 max-w-[150px] leading-tight hidden sm:block">
-                (Excel फाईल .csv फॉरमॅटमध्ये सेव्ह करून अपलोड करा. Headers: donor_name, amount, city, phone, category, payment_mode)
+                (Headers: donor_name, amount, city, phone, category, payment_mode)
               </span>
             </div>
           )}
@@ -377,7 +499,7 @@ export default function AdminDonationsPage({ showNotification }) {
               className="w-2/3 px-3 py-2 border rounded-lg text-sm"
             />
           </div>
-          
+
           <div className="sm:col-span-3 flex gap-3 mt-2">
             <button
               type="submit"
@@ -431,7 +553,9 @@ export default function AdminDonationsPage({ showNotification }) {
                   <button
                     onClick={() => toggleVerification(d.id, d.is_verified)}
                     className={`text-[11px] px-2.5 py-1.5 rounded-full font-semibold transition ${
-                      d.is_verified ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                      d.is_verified
+                        ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                        : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
                     }`}
                   >
                     {d.is_verified ? 'पूर्ण ✓' : 'अपूर्ण ⚠️'}
@@ -462,4 +586,4 @@ export default function AdminDonationsPage({ showNotification }) {
       </div>
     </div>
   );
-          }
+}
