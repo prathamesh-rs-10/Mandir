@@ -18,16 +18,10 @@ const INITIAL_FORM_STATE = {
   nearest_airport: '',
   aarti_schedule: '',
   mandir_rules: '',
-  bank_name: '',
-  bank_acc_no: '',
-  bank_ifsc: '',
-  bank_branch: '',
-  upi_id: '',
   // Section visibility flags
   show_map_section: true,
   show_transport_section: true,
   show_darshan_rules_section: true,
-  show_banking_section: true,
   show_secondary_phone: true,
   show_email: true,
 };
@@ -76,7 +70,6 @@ export default function AdminContactPage({ showNotification }) {
     loadData();
   }, []);
 
-  // Update formData fields
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -96,7 +89,7 @@ export default function AdminContactPage({ showNotification }) {
 
     setLoading(false);
     if (!error) {
-      showNotification?.('सर्व संपर्क, विभाग दृश्यमानता व बँक माहिती यशस्वीरित्या सेव्ह झाली!');
+      showNotification?.('सर्व संपर्क व विभाग दृश्यमानता माहिती यशस्वीरित्या सेव्ह झाली!');
     } else {
       showNotification?.('त्रुटी: ' + error.message, 'error');
     }
@@ -475,86 +468,6 @@ export default function AdminContactPage({ showNotification }) {
             </div>
           </div>
 
-          {/* ─── 5. BANK ACCOUNT & UPI DONATIONS ─── */}
-          <div
-            className={`bg-white rounded-2xl shadow-sm border p-6 transition-all ${
-              !formData.show_banking_section ? 'border-dashed border-gray-300 bg-gray-50/50' : 'border-gray-200'
-            }`}
-          >
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 border-b pb-2">
-              <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                <span>🏛️</span>
-                <span>बँक खाते व देणगी UPI तपशील</span>
-              </h2>
-              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer bg-orange-50 px-3 py-1 rounded-full border border-orange-200">
-                <input
-                  type="checkbox"
-                  checked={formData.show_banking_section}
-                  onChange={(e) => handleChange('show_banking_section', e.target.checked)}
-                  className="h-4 w-4 text-orange-600 rounded"
-                />
-                <span>बँक/UPI विभाग वेबसाइटवर दाखवा</span>
-              </label>
-            </div>
-
-            <div className="grid md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">बँकेचे नाव</label>
-                <input
-                  type="text"
-                  value={formData.bank_name || ''}
-                  onChange={(e) => handleChange('bank_name', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                  placeholder="State Bank of India"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">खाते क्रमांक</label>
-                <input
-                  type="text"
-                  value={formData.bank_acc_no || ''}
-                  onChange={(e) => handleChange('bank_acc_no', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
-                  placeholder="30123456789"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">IFSC कोड</label>
-                <input
-                  type="text"
-                  value={formData.bank_ifsc || ''}
-                  onChange={(e) => handleChange('bank_ifsc', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono uppercase"
-                  placeholder="SBIN0001234"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">शाखा (Branch)</label>
-                <input
-                  type="text"
-                  value={formData.bank_branch || ''}
-                  onChange={(e) => handleChange('bank_branch', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                  placeholder="मुख्य शाखा"
-                />
-              </div>
-
-              <div className="md:col-span-4">
-                <label className="block text-xs font-semibold text-gray-600 mb-1">अधिकृत देणगी UPI ID</label>
-                <input
-                  type="text"
-                  value={formData.upi_id || ''}
-                  onChange={(e) => handleChange('upi_id', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
-                  placeholder="mandirtrust@sbi"
-                />
-              </div>
-            </div>
-          </div>
-
           {/* ─── SAVE BUTTON ─── */}
           <div className="sticky bottom-4 bg-white/90 backdrop-blur p-4 rounded-xl border shadow-lg flex items-center justify-between">
             <span className="text-xs text-gray-500 hidden sm:inline">
@@ -578,7 +491,6 @@ export default function AdminContactPage({ showNotification }) {
               <p className="text-xs text-gray-500">संदेशाची स्थिती बदला, नोंद ठेवा किंवा संदेश हटवा.</p>
             </div>
 
-            {/* Filter by Status */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-600 font-medium">स्थिती:</span>
               <select
@@ -661,7 +573,6 @@ export default function AdminContactPage({ showNotification }) {
                         </p>
                       )}
 
-                      {/* Inline Status/Notes Editor */}
                       {isEditing && (
                         <div className="bg-white p-3 border border-orange-200 rounded-lg mt-3 space-y-2">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -708,7 +619,6 @@ export default function AdminContactPage({ showNotification }) {
                       )}
                     </div>
 
-                    {/* Action buttons */}
                     <div className="flex flex-wrap sm:flex-col items-center sm:items-stretch gap-2 shrink-0">
                       <a
                         href={`tel:${sanitizedPhone}`}
