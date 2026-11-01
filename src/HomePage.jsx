@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
+import React, { useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
 
 export default function HomePage({ onNavigate }) {
   const [homeData, setHomeData] = useState(null);
@@ -7,8 +7,8 @@ export default function HomePage({ onNavigate }) {
 
   useEffect(() => {
     supabase
-      .from('mandir_home_content')
-      .select('*')
+      .from("mandir_home_content")
+      .select("*")
       .limit(1)
       .single()
       .then(({ data, error }) => {
@@ -31,14 +31,15 @@ export default function HomePage({ onNavigate }) {
     return null;
   }
 
-  const hasConcepts = Array.isArray(homeData.concepts_list) && homeData.concepts_list.length > 0;
+  const hasConcepts =
+    Array.isArray(homeData.concepts_list) && homeData.concepts_list.length > 0;
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 font-sans antialiased">
       {/* Hero Banner with Blurred Admin Background */}
       {homeData.show_hero_section !== false && (
         <section className="relative overflow-hidden bg-gradient-to-b from-orange-700 via-amber-700 to-amber-800 text-white py-24 px-4 text-center shadow-xl">
-          {/* Blurred Background Image Layer */}
+          {/* Blurred Background Layer */}
           {homeData.hero_image_url && (
             <div
               className="absolute inset-0 bg-cover bg-center scale-110 filter blur-md sm:blur-lg opacity-40 transition-all duration-700 pointer-events-none"
@@ -47,7 +48,7 @@ export default function HomePage({ onNavigate }) {
             />
           )}
 
-          {/* Contrast tint overlay */}
+          {/* Dark Tint Overlay */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-orange-950/40 to-black/60 pointer-events-none" />
 
           {/* Hero Content */}
@@ -83,35 +84,38 @@ export default function HomePage({ onNavigate }) {
       )}
 
       {/* Editorial Vision */}
-      {homeData.show_editorial_section !== false && (homeData.editorial_title || homeData.editorial_quote || homeData.editorial_body) && (
-        <section className="max-w-4xl mx-auto py-16 px-6">
-          {homeData.editorial_title && (
-            <div className="text-center mb-8">
-              <span className="text-xs uppercase tracking-widest text-orange-700 font-bold bg-orange-100 px-3.5 py-1.5 rounded-full border border-orange-200">
-                {homeData.editorial_title}
-              </span>
-              <div className="w-12 h-1 bg-gradient-to-r from-orange-500 to-amber-400 mx-auto mt-3 rounded-full" />
-            </div>
-          )}
-
-          {homeData.editorial_quote && (
-            <div className="relative mb-8 bg-amber-50/60 border border-amber-200/80 rounded-2xl p-6 sm:p-8 shadow-sm">
-              <div className="text-4xl text-orange-400 font-serif absolute -top-4 left-6 bg-stone-50 px-2 rounded">
-                “
+      {homeData.show_editorial_section !== false &&
+        (homeData.editorial_title ||
+          homeData.editorial_quote ||
+          homeData.editorial_body) && (
+          <section className="max-w-4xl mx-auto py-16 px-6">
+            {homeData.editorial_title && (
+              <div className="text-center mb-8">
+                <span className="text-xs uppercase tracking-widest text-orange-700 font-bold bg-orange-100 px-3.5 py-1.5 rounded-full border border-orange-200">
+                  {homeData.editorial_title}
+                </span>
+                <div className="w-12 h-1 bg-gradient-to-r from-orange-500 to-amber-400 mx-auto mt-3 rounded-full" />
               </div>
-              <p className="text-lg sm:text-xl font-medium italic text-stone-800 leading-relaxed text-center">
-                {homeData.editorial_quote}
-              </p>
-            </div>
-          )}
+            )}
 
-          {homeData.editorial_body && (
-            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-sm leading-relaxed text-base sm:text-lg text-stone-700 whitespace-pre-line text-justify sm:text-center">
-              {homeData.editorial_body}
-            </div>
-          )}
-        </section>
-      )}
+            {homeData.editorial_quote && (
+              <div className="relative mb-8 bg-amber-50/60 border border-amber-200/80 rounded-2xl p-6 sm:p-8 shadow-sm">
+                <div className="text-4xl text-orange-400 font-serif absolute -top-4 left-6 bg-stone-50 px-2 rounded">
+                  “
+                </div>
+                <p className="text-lg sm:text-xl font-medium italic text-stone-800 leading-relaxed text-center">
+                  {homeData.editorial_quote}
+                </p>
+              </div>
+            )}
+
+            {homeData.editorial_body && (
+              <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-sm leading-relaxed text-base sm:text-lg text-stone-700 whitespace-pre-line text-justify sm:text-center">
+                {homeData.editorial_body}
+              </div>
+            )}
+          </section>
+        )}
 
       {/* Architectural Concept Grid */}
       {homeData.show_concepts_section !== false && hasConcepts && (
@@ -137,25 +141,46 @@ export default function HomePage({ onNavigate }) {
               {homeData.concepts_list.map((item, index) => (
                 <div
                   key={index}
-                  className="group bg-amber-50/40 hover:bg-white border border-amber-200/70 hover:border-orange-400 rounded-2xl p-6 transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="group bg-amber-50/40 hover:bg-white border border-amber-200/70 hover:border-orange-400 rounded-2xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-lg flex flex-col justify-between"
                 >
-                  {item.num && (
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-xs font-bold text-orange-700 bg-orange-100 border border-orange-200 px-3 py-1 rounded-md">
-                        {item.num}
-                      </span>
+                  {/* Card Image Banner */}
+                  {item.image_url ? (
+                    <div className="relative w-full h-48 overflow-hidden bg-stone-100">
+                      <img
+                        src={item.image_url}
+                        alt={item.title || "Concept Image"}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        loading="lazy"
+                      />
+                      {item.num && (
+                        <span className="absolute top-3 left-3 text-xs font-bold text-orange-900 bg-white/90 backdrop-blur-sm border border-orange-200 px-3 py-1 rounded-md shadow-sm">
+                          {item.num}
+                        </span>
+                      )}
                     </div>
+                  ) : (
+                    item.num && (
+                      <div className="pt-6 px-6">
+                        <span className="text-xs font-bold text-orange-700 bg-orange-100 border border-orange-200 px-3 py-1 rounded-md inline-block">
+                          {item.num}
+                        </span>
+                      </div>
+                    )
                   )}
-                  {item.title && (
-                    <h3 className="text-lg font-bold text-stone-900 mb-2 group-hover:text-orange-700 transition-colors">
-                      {item.title}
-                    </h3>
-                  )}
-                  {item.desc && (
-                    <p className="text-sm text-stone-600 leading-relaxed">
-                      {item.desc}
-                    </p>
-                  )}
+
+                  {/* Card Text Content */}
+                  <div className="p-6 flex-1 flex flex-col">
+                    {item.title && (
+                      <h3 className="text-lg font-bold text-stone-900 mb-2 group-hover:text-orange-700 transition-colors">
+                        {item.title}
+                      </h3>
+                    )}
+                    {item.desc && (
+                      <p className="text-sm text-stone-600 leading-relaxed">
+                        {item.desc}
+                      </p>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -164,40 +189,44 @@ export default function HomePage({ onNavigate }) {
       )}
 
       {/* Action CTA */}
-      {homeData.show_cta_section !== false && (homeData.cta_title || homeData.cta_desc || homeData.cta_btn_primary_text || homeData.cta_btn_secondary_text) && (
-        <section className="py-16 px-6 bg-gradient-to-b from-orange-50 to-amber-100/50">
-          <div className="max-w-3xl mx-auto text-center bg-white border border-amber-200/90 rounded-3xl p-8 sm:p-12 shadow-lg">
-            {homeData.cta_title && (
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-orange-950 mb-4 tracking-tight">
-                {homeData.cta_title}
-              </h3>
-            )}
-            {homeData.cta_desc && (
-              <p className="text-stone-600 mb-8 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto">
-                {homeData.cta_desc}
-              </p>
-            )}
-            <div className="flex flex-wrap items-center justify-center gap-4">
-              {homeData.cta_btn_primary_text && (
-                <button
-                  onClick={() => onNavigate && onNavigate('donations')}
-                  className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold px-7 py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all"
-                >
-                  {homeData.cta_btn_primary_text}
-                </button>
+      {homeData.show_cta_section !== false &&
+        (homeData.cta_title ||
+          homeData.cta_desc ||
+          homeData.cta_btn_primary_text ||
+          homeData.cta_btn_secondary_text) && (
+          <section className="py-16 px-6 bg-gradient-to-b from-orange-50 to-amber-100/50">
+            <div className="max-w-3xl mx-auto text-center bg-white border border-amber-200/90 rounded-3xl p-8 sm:p-12 shadow-lg">
+              {homeData.cta_title && (
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-orange-950 mb-4 tracking-tight">
+                  {homeData.cta_title}
+                </h3>
               )}
-              {homeData.cta_btn_secondary_text && (
-                <button
-                  onClick={() => onNavigate && onNavigate('reports')}
-                  className="bg-white hover:bg-stone-50 text-orange-900 font-bold px-7 py-3.5 border-2 border-orange-300 hover:border-orange-400 rounded-xl shadow-sm transition-all"
-                >
-                  {homeData.cta_btn_secondary_text}
-                </button>
+              {homeData.cta_desc && (
+                <p className="text-stone-600 mb-8 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto">
+                  {homeData.cta_desc}
+                </p>
               )}
+              <div className="flex flex-wrap items-center justify-center gap-4">
+                {homeData.cta_btn_primary_text && (
+                  <button
+                    onClick={() => onNavigate && onNavigate("donations")}
+                    className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold px-7 py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all"
+                  >
+                    {homeData.cta_btn_primary_text}
+                  </button>
+                )}
+                {homeData.cta_btn_secondary_text && (
+                  <button
+                    onClick={() => onNavigate && onNavigate("reports")}
+                    className="bg-white hover:bg-stone-50 text-orange-900 font-bold px-7 py-3.5 border-2 border-orange-300 hover:border-orange-400 rounded-xl shadow-sm transition-all"
+                  >
+                    {homeData.cta_btn_secondary_text}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        )}
     </div>
   );
 }
