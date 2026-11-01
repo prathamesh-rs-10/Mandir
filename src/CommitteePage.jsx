@@ -33,7 +33,6 @@ export default function CommitteePage() {
 
   return (
     <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 font-sans">
-      
       {/* Title & Trust Header */}
       <div className="text-center max-w-3xl mx-auto mb-10">
         <span className="text-xs font-bold uppercase tracking-widest text-orange-700 bg-orange-100 px-3 py-1 rounded-full">
@@ -99,23 +98,16 @@ export default function CommitteePage() {
                 }`}
               >
                 <div>
-                  <div className="flex items-start gap-4">
-                    <img
-                      src={member.photo_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80'}
-                      alt={member.full_name}
-                      className="w-16 h-16 rounded-full object-cover border-2 border-orange-500 shrink-0 shadow-xs"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[10px] font-bold uppercase bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full inline-block">
-                        {member.category || 'कार्यकारी मंडळ'}
-                      </span>
-                      <h3 className="font-bold text-gray-900 text-base sm:text-lg leading-tight mt-1 truncate" title={member.full_name}>
-                        {member.full_name}
-                      </h3>
-                      <p className="text-xs font-semibold text-orange-700 mt-0.5">
-                        {member.designation}
-                      </p>
-                    </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase bg-orange-100 text-orange-800 px-2.5 py-0.5 rounded-full inline-block">
+                      {member.category || 'कार्यकारी मंडळ'}
+                    </span>
+                    <h3 className="font-bold text-gray-900 text-base sm:text-lg leading-tight mt-2 truncate" title={member.full_name}>
+                      {member.full_name}
+                    </h3>
+                    <p className="text-xs font-semibold text-orange-700 mt-0.5">
+                      {member.designation}
+                    </p>
                   </div>
 
                   {/* Core Responsibilities */}
