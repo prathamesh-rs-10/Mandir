@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 
 export default function DonationsPage() {
   const [donations, setDonations] = useState([]);
-  const [contactInfo, setContactInfo] = useState(null);
+  const [bankingSettings, setBankingSettings] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [copyStatus, setCopyStatus] = useState('');
@@ -23,22 +23,24 @@ export default function DonationsPage() {
   });
 
   const loadData = async () => {
-    // 1. Fetch donations
+    // 1. Fetch public donations from the unified table
     const { data: donData } = await supabase
       .from('mandir_donations')
       .select('*')
+      .eq('record_type', 'donation')
       .order('created_at', { ascending: false });
 
     if (donData) setDonations(donData);
 
-    // 2. Fetch contact & bank info + QR code
-    const { data: infoData } = await supabase
-      .from('mandir_contact_info')
+    // 2. Fetch banking and QR settings row from the same unified table
+    const { data: settingsData } = await supabase
+      .from('mandir_donations')
       .select('*')
+      .eq('record_type', 'settings')
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (infoData) setContactInfo(infoData);
+    if (settingsData) setBankingSettings(settingsData);
   };
 
   useEffect(() => {
@@ -53,13 +55,14 @@ export default function DonationsPage() {
     setTimeout(() => setCopyStatus(''), 3000);
   };
 
-  // Submit offline / online transfer receipt request
+  // Submit transfer receipt request into the unified table
   const handleDevoteeSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
 
     const { error } = await supabase.from('mandir_donations').insert([
       {
+        record_type: 'donation',
         donor_name: devoteeForm.donor_name,
         phone: devoteeForm.phone,
         city: devoteeForm.city || 'मुंबई',
@@ -69,6 +72,7 @@ export default function DonationsPage() {
         transaction_ref: devoteeForm.transaction_ref,
         message: devoteeForm.message,
         is_verified: false,
+        is_visible: true,
       },
     ]);
 
@@ -89,9 +93,11 @@ export default function DonationsPage() {
     }
   };
 
-  // Calculations
-  const verifiedDonations = donations.filter((d) => d.is_verified);
-  const totalAmount = verifiedDonations.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+  // Filter verified & visible donations for public display
+  const verifiedDonations = donations.filter((d) => d.is_verified && d.is_visible !== false);
+  const totalAmount = donations
+    .filter((d) => d.is_verified)
+    .reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
   // Top 5 Donors ranked by amount
   const top5Donors = [...verifiedDonations]
@@ -101,7 +107,7 @@ export default function DonationsPage() {
   // Filtered Donors for list
   const filteredDonors = verifiedDonations.filter((d) => {
     const matchesSearch =
-      d.donor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      d.donor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (d.city && d.city.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCat = selectedCategory === 'ALL' || d.category === selectedCategory;
     return matchesSearch && matchesCat;
@@ -220,11 +226,9 @@ export default function DonationsPage() {
 
         {top5Donors.length > 0 ? (
           <div className="relative w-full overflow-hidden py-6">
-            {/* Left & Right Gradient Shadows for seamless floating illusion */}
             <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-16 sm:w-28 bg-gradient-to-r from-white via-white/80 to-transparent z-20"></div>
             <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 sm:w-28 bg-gradient-to-l from-white via-white/80 to-transparent z-20"></div>
 
-            {/* Continuous Moving Track (duplicated top5Donors 2x to loop seamlessly) */}
             <div className="animate-horizontal-float flex gap-6 items-center">
               {[...top5Donors, ...top5Donors].map((donor, index) => {
                 const idx = index % top5Donors.length;
@@ -236,7 +240,6 @@ export default function DonationsPage() {
                     style={{ animationDelay: `${(idx % 2) * 1.5}s` }}
                     className={`animate-bob group relative w-72 sm:w-80 flex-shrink-0 rounded-3xl p-5 transition-all duration-300 ease-out transform hover:-translate-y-3 cursor-pointer shadow-md bg-white ${cfg.cardBg} ${cfg.ring} ${cfg.shadow}`}
                   >
-                    {/* Rank Badge Header */}
                     <div className="flex justify-between items-center mb-4">
                       <span className={`inline-block bg-gradient-to-r ${cfg.bg} text-white px-3 py-1 rounded-full text-[10px] font-black tracking-wider shadow-sm transition-transform duration-300 group-hover:scale-105`}>
                         {cfg.badge}
@@ -246,7 +249,6 @@ export default function DonationsPage() {
                       </span>
                     </div>
 
-                    {/* Donor Details with Round Avatar */}
                     <div className="flex items-center gap-3.5 mb-4">
                       <div className={`w-13 h-13 min-w-[50px] min-h-[50px] rounded-2xl bg-white border-2 border-orange-100 flex items-center justify-center font-black text-xl shadow-md ${cfg.glow} group-hover:rotate-6 transition-transform duration-300`}>
                         <span className={`bg-clip-text text-transparent bg-gradient-to-br ${cfg.textGradient}`}>
@@ -263,7 +265,6 @@ export default function DonationsPage() {
                       </div>
                     </div>
 
-                    {/* Amount Footer */}
                     <div className="pt-3 border-t border-gray-200/60 flex items-baseline justify-between">
                       <span className="text-[10px] font-extrabold uppercase text-gray-400 tracking-wider">
                         देणगी रक्कम
@@ -286,142 +287,144 @@ export default function DonationsPage() {
       </section>
 
       {/* ================= SECTION 2: QR CODE & BANK TRANSFER PAYMENT ================= */}
-      <section className="grid lg:grid-cols-12 gap-8 mb-14">
-        {/* Left: QR Code Card */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border-2 border-orange-300 p-6 sm:p-8 shadow-sm flex flex-col items-center text-center">
-          <span className="text-xs font-bold text-white bg-orange-600 px-3 py-1 rounded-full uppercase mb-2">
-            Scan & Pay via any UPI App
-          </span>
-          <h3 className="text-xl font-bold text-gray-800">थेट UPI द्वारे देणगी द्या</h3>
-          <p className="text-xs text-gray-500 mt-1 mb-4">
-            Google Pay, PhonePe, Paytm, BHIM द्वारे QR कोड स्कॅन करा
-          </p>
+      {bankingSettings?.show_banking_section !== false && (
+        <section className="grid lg:grid-cols-12 gap-8 mb-14">
+          {/* Left: QR Code Card */}
+          <div className="lg:col-span-5 bg-white rounded-2xl border-2 border-orange-300 p-6 sm:p-8 shadow-sm flex flex-col items-center text-center">
+            <span className="text-xs font-bold text-white bg-orange-600 px-3 py-1 rounded-full uppercase mb-2">
+              Scan & Pay via any UPI App
+            </span>
+            <h3 className="text-xl font-bold text-gray-800">थेट UPI द्वारे देणगी द्या</h3>
+            <p className="text-xs text-gray-500 mt-1 mb-4">
+              Google Pay, PhonePe, Paytm, BHIM द्वारे QR कोड स्कॅन करा
+            </p>
 
-          <div className="w-56 h-56 bg-orange-50 border-2 border-dashed border-orange-300 rounded-2xl p-3 flex items-center justify-center shadow-inner relative group">
-            {contactInfo?.donation_qr_url ? (
-              <img
-                src={contactInfo.donation_qr_url}
-                alt="Mandir UPI QR Code"
-                className="w-full h-full object-contain rounded-lg"
-              />
-            ) : (
-              <div className="text-center p-4 text-gray-400">
-                <div className="text-3xl mb-1">📱</div>
-                <p className="text-xs font-semibold">QR कोड लवकरच उपलब्ध होईल</p>
-                <p className="text-[10px] text-gray-400">किंवा खालील UPI ID वापरा</p>
+            <div className="w-56 h-56 bg-orange-50 border-2 border-dashed border-orange-300 rounded-2xl p-3 flex items-center justify-center shadow-inner relative group">
+              {bankingSettings?.donation_qr_url ? (
+                <img
+                  src={bankingSettings.donation_qr_url}
+                  alt="Mandir UPI QR Code"
+                  className="w-full h-full object-contain rounded-lg"
+                />
+              ) : (
+                <div className="text-center p-4 text-gray-400">
+                  <div className="text-3xl mb-1">📱</div>
+                  <p className="text-xs font-semibold">QR कोड लवकरच उपलब्ध होईल</p>
+                  <p className="text-[10px] text-gray-400">किंवा खालील UPI ID वापरा</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 w-full bg-gray-50 rounded-xl p-3 border border-gray-200">
+              <p className="text-xs text-gray-500 font-medium">अधिकृत मंदिर UPI ID:</p>
+              <div className="flex items-center justify-between mt-1 px-2 py-1 bg-white rounded border">
+                <span className="font-mono text-sm font-bold text-orange-800 truncate">
+                  {bankingSettings?.upi_id || 'kalambadevi@upi'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(bankingSettings?.upi_id || 'kalambadevi@upi', 'UPI ID')}
+                  className="text-xs bg-orange-100 hover:bg-orange-200 text-orange-800 font-semibold px-2.5 py-1 rounded transition ml-2"
+                >
+                  कॉपी करा
+                </button>
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="mt-4 w-full bg-gray-50 rounded-xl p-3 border border-gray-200">
-            <p className="text-xs text-gray-500 font-medium">अधिकृत मंदिर UPI ID:</p>
-            <div className="flex items-center justify-between mt-1 px-2 py-1 bg-white rounded border">
-              <span className="font-mono text-sm font-bold text-orange-800 truncate">
-                {contactInfo?.upi_id || 'kalambadevi@upi'}
-              </span>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(contactInfo?.upi_id || 'kalambadevi@upi', 'UPI ID')}
-                className="text-xs bg-orange-100 hover:bg-orange-200 text-orange-800 font-semibold px-2.5 py-1 rounded transition ml-2"
-              >
-                कॉपी करा
-              </button>
+            <div className="flex justify-center items-center gap-3 mt-4 text-[11px] text-gray-500">
+              <span>GPay</span>
+              <span>•</span>
+              <span>PhonePe</span>
+              <span>•</span>
+              <span>Paytm</span>
+              <span>•</span>
+              <span>BHIM UPI</span>
             </div>
           </div>
 
-          <div className="flex justify-center items-center gap-3 mt-4 text-[11px] text-gray-500">
-            <span>GPay</span>
-            <span>•</span>
-            <span>PhonePe</span>
-            <span>•</span>
-            <span>Paytm</span>
-            <span>•</span>
-            <span>BHIM UPI</span>
-          </div>
-        </div>
-
-        {/* Right: Official Bank Account Details */}
-        <div className="lg:col-span-7 bg-gradient-to-br from-orange-800 to-amber-900 text-white rounded-2xl p-6 sm:p-8 shadow-md flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between border-b border-orange-700/80 pb-3 mb-5">
-              <div>
-                <h3 className="text-xl font-bold">अधिकृत बँक खाते तपशील</h3>
-                <p className="text-xs text-orange-200">NEFT / RTGS / IMPS द्वारे देणगी पाठवण्यासाठी</p>
-              </div>
-              <span className="text-2xl">🏛️</span>
-            </div>
-
-            <div className="space-y-4 text-sm">
-              <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
+          {/* Right: Official Bank Account Details */}
+          <div className="lg:col-span-7 bg-gradient-to-br from-orange-800 to-amber-900 text-white rounded-2xl p-6 sm:p-8 shadow-md flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-orange-700/80 pb-3 mb-5">
                 <div>
-                  <p className="text-xs text-orange-300">खातेधारकाचे नाव (Account Name)</p>
-                  <p className="font-bold text-sm sm:text-base">
-                    {contactInfo?.trust_name || 'श्री काळंबादेवी मंदिर जीर्णोद्धार कमिटी'}
-                  </p>
+                  <h3 className="text-xl font-bold">अधिकृत बँक खाते तपशील</h3>
+                  <p className="text-xs text-orange-200">NEFT / RTGS / IMPS द्वारे देणगी पाठवण्यासाठी</p>
                 </div>
+                <span className="text-2xl">🏛️</span>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-4 text-sm">
                 <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
                   <div>
-                    <p className="text-xs text-orange-300">बँकेचे नाव (Bank Name)</p>
-                    <p className="font-bold">{contactInfo?.bank_name || 'State Bank of India'}</p>
-                  </div>
-                </div>
-
-                <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
-                  <div>
-                    <p className="text-xs text-orange-300">शाखा (Branch)</p>
-                    <p className="font-bold">{contactInfo?.bank_branch || 'मुंबई'}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
-                  <div>
-                    <p className="text-xs text-orange-300">खाते क्रमांक (Account Number)</p>
-                    <p className="font-mono font-bold text-base sm:text-lg">
-                      {contactInfo?.bank_acc_no || 'उपलब्ध नाही'}
+                    <p className="text-xs text-orange-300">खातेधारकाचे नाव (Account Name)</p>
+                    <p className="font-bold text-sm sm:text-base">
+                      {bankingSettings?.bank_acc_holder_name || 'श्री काळंबादेवी मंदिर जीर्णोद्धार कमिटी'}
                     </p>
                   </div>
-                  {contactInfo?.bank_acc_no && (
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(contactInfo.bank_acc_no, 'खाते क्रमांक')}
-                      className="text-xs bg-orange-700 hover:bg-orange-600 px-2.5 py-1 rounded font-medium"
-                    >
-                      कॉपी
-                    </button>
-                  )}
                 </div>
 
-                <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
-                  <div>
-                    <p className="text-xs text-orange-300">IFSC कोड</p>
-                    <p className="font-mono font-bold text-base sm:text-lg">
-                      {contactInfo?.bank_ifsc || 'उपलब्ध नाही'}
-                    </p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-orange-300">बँकेचे नाव (Bank Name)</p>
+                      <p className="font-bold">{bankingSettings?.bank_name || 'State Bank of India'}</p>
+                    </div>
                   </div>
-                  {contactInfo?.bank_ifsc && (
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(contactInfo.bank_ifsc, 'IFSC कोड')}
-                      className="text-xs bg-orange-700 hover:bg-orange-600 px-2.5 py-1 rounded font-medium"
-                    >
-                      कॉपी
-                    </button>
-                  )}
+
+                  <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-orange-300">शाखा (Branch)</p>
+                      <p className="font-bold">{bankingSettings?.bank_branch || 'मुंबई'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-orange-300">खाते क्रमांक (Account Number)</p>
+                      <p className="font-mono font-bold text-base sm:text-lg">
+                        {bankingSettings?.bank_acc_no || 'उपलब्ध नाही'}
+                      </p>
+                    </div>
+                    {bankingSettings?.bank_acc_no && (
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(bankingSettings.bank_acc_no, 'खाते क्रमांक')}
+                        className="text-xs bg-orange-700 hover:bg-orange-600 px-2.5 py-1 rounded font-medium"
+                      >
+                        कॉपी
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-orange-950/40 p-3.5 rounded-xl border border-orange-700/50 flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-orange-300">IFSC कोड</p>
+                      <p className="font-mono font-bold text-base sm:text-lg">
+                        {bankingSettings?.bank_ifsc || 'उपलब्ध नाही'}
+                      </p>
+                    </div>
+                    {bankingSettings?.bank_ifsc && (
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(bankingSettings.bank_ifsc, 'IFSC कोड')}
+                        className="text-xs bg-orange-700 hover:bg-orange-600 px-2.5 py-1 rounded font-medium"
+                      >
+                        कॉपी
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-6 pt-4 border-t border-orange-700/60 text-xs text-orange-200">
-            ℹ️ बँक ट्रान्सफर किंवा UPI द्वारे देणगी दिल्यानंतर, अधिकृत पावती मिळवण्यासाठी खालील फॉर्ममध्ये आपला UTR / संदर्भ क्रमांक नोंदवा.
+            <div className="mt-6 pt-4 border-t border-orange-700/60 text-xs text-orange-200">
+              ℹ️ बँक ट्रान्सफर किंवा UPI द्वारे देणगी दिल्यानंतर, अधिकृत पावती मिळवण्यासाठी खालील फॉर्ममध्ये आपला UTR / संदर्भ क्रमांक नोंदवा.
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ================= SECTION 3: DONATION CAUSES & TIERS ================= */}
       <section className="mb-14">
