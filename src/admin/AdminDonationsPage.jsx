@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
+const STORAGE_BUCKET = 'temple-assets';
+
 export default function AdminDonationsPage({ showNotification }) {
   const [donations, setDonations] = useState([]);
   const [settingsId, setSettingsId] = useState(null);
@@ -32,13 +34,17 @@ export default function AdminDonationsPage({ showNotification }) {
 
   const loadData = async () => {
     // 1. Fetch donations from the unified table
-    const { data: donData } = await supabase
+    const { data: donData, error: donError } = await supabase
       .from('mandir_donations')
       .select('*')
       .eq('record_type', 'donation')
       .order('created_at', { ascending: false });
 
-    if (donData) setDonations(donData);
+    if (donError) {
+      showNotification('डेटा लोड करताना त्रुटी: ' + donError.message, 'error');
+    } else if (donData) {
+      setDonations(donData);
+    }
 
     // 2. Fetch settings row from the same table
     const { data: settingsData } = await supabase
@@ -65,57 +71,71 @@ export default function AdminDonationsPage({ showNotification }) {
     loadData();
   }, []);
 
-  // Upload QR to Supabase Storage & save URL in the unified table
+  // Upload QR to Supabase Storage ('temple-assets') & save public URL
   const handleQrUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploadingQr(true);
-    const fileExt = file.name.split('.').pop();
-    const fileName = `temple-donation-qr-${Date.now()}.${fileExt}`;
-    const filePath = `qr-codes/${fileName}`;
+    try {
+      setUploadingQr(true);
 
-    const { error: uploadError } = await supabase.storage
-      .from('temple-assets')
-      .upload(filePath, file);
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const cleanFileName = `qr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+      const filePath = `qr-codes/${cleanFileName}`;
 
-    if (uploadError) {
-      showNotification('QR अपलोड त्रुटी: ' + uploadError.message, 'error');
+      const { error: uploadError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        showNotification('QR अपलोड त्रुटी: ' + uploadError.message, 'error');
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(filePath);
+
+      const publicUrl = publicUrlData?.publicUrl;
+
+      if (!publicUrl) {
+        showNotification('पब्लिक URL मिळवण्यात त्रुटी आली.', 'error');
+        return;
+      }
+
+      const payload = {
+        record_type: 'settings',
+        donation_qr_url: publicUrl,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (settingsId) payload.id = settingsId;
+
+      const { data: updatedRecord, error: dbError } = await supabase
+        .from('mandir_donations')
+        .upsert(payload)
+        .select()
+        .maybeSingle();
+
+      if (!dbError) {
+        if (updatedRecord?.id) setSettingsId(updatedRecord.id);
+        setQrUrl(publicUrl);
+        showNotification('नवीन QR कोड यशस्वीरित्या सेव्ह झाला!');
+      } else {
+        showNotification('डेटाबेस त्रुटी: ' + dbError.message, 'error');
+      }
+    } catch (err) {
+      showNotification('काहीतरी चूक झाली: ' + err.message, 'error');
+    } finally {
       setUploadingQr(false);
-      return;
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('temple-assets')
-      .getPublicUrl(filePath);
-
-    const publicUrl = publicUrlData.publicUrl;
-
-    const payload = {
-      record_type: 'settings',
-      donation_qr_url: publicUrl,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (settingsId) payload.id = settingsId;
-
-    const { data: updatedRecord, error: dbError } = await supabase
-      .from('mandir_donations')
-      .upsert(payload)
-      .select()
-      .maybeSingle();
-
-    setUploadingQr(false);
-    if (!dbError) {
-      if (updatedRecord?.id) setSettingsId(updatedRecord.id);
-      setQrUrl(publicUrl);
-      showNotification('नवीन QR कोड यशस्वीरित्या सेव्ह झाला!');
-    } else {
-      showNotification('त्रुटी: ' + dbError.message, 'error');
+      e.target.value = '';
     }
   };
 
-  // Save Bank, UPI & Account Name in the unified table
+  // Save Bank, UPI & Account Name
   const handleSaveBankInfo = async (e) => {
     e.preventDefault();
     setSavingBankInfo(true);
@@ -240,12 +260,14 @@ export default function AdminDonationsPage({ showNotification }) {
 
   // CSV Bulk Upload
   const handleBulkUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (event) => {
-      const text = event.target.result;
+      const text = event.target?.result;
+      if (typeof text !== 'string') return;
+
       const rows = text.split('\n').filter((row) => row.trim() !== '');
 
       if (rows.length < 2) {
@@ -321,7 +343,9 @@ export default function AdminDonationsPage({ showNotification }) {
           <p className="text-xs uppercase tracking-wider text-orange-200 font-semibold">
             एकूण पडताळणी झालेली देणगी रक्कम
           </p>
-          <p className="text-3xl sm:text-4xl font-extrabold mt-1">₹ {totalAmount.toLocaleString('en-IN')}</p>
+          <p className="text-3xl sm:text-4xl font-extrabold mt-1">
+            ₹ {totalAmount.toLocaleString('en-IN')}
+          </p>
         </div>
         <div className="mt-4 sm:mt-0 flex gap-6 text-right">
           <div>
@@ -363,14 +387,22 @@ export default function AdminDonationsPage({ showNotification }) {
           <div className="flex flex-col sm:flex-row items-center gap-6 bg-gray-50/50 p-4 rounded-xl border border-gray-200">
             <div className="w-40 h-40 bg-white border-2 border-dashed border-orange-300 rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
               {qrUrl ? (
-                <img src={qrUrl} alt="Donation QR Code" className="w-full h-full object-contain p-2" />
+                <img
+                  src={qrUrl}
+                  alt="Donation QR Code"
+                  className="w-full h-full object-contain p-2"
+                />
               ) : (
-                <span className="text-xs text-gray-400 text-center px-2">QR कोड उपलब्ध नाही</span>
+                <span className="text-xs text-gray-400 text-center px-2">
+                  QR कोड उपलब्ध नाही
+                </span>
               )}
             </div>
             <div className="space-y-3 flex-1 w-full">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">नवीन QR कोड इमेज अपलोड करा:</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  नवीन QR कोड इमेज अपलोड करा:
+                </label>
                 <input
                   type="file"
                   accept="image/*"
@@ -378,11 +410,17 @@ export default function AdminDonationsPage({ showNotification }) {
                   disabled={uploadingQr}
                   className="text-xs text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
                 />
-                {uploadingQr && <p className="text-xs text-orange-600 animate-pulse font-medium mt-1">QR कोड अपलोड होत आहे...</p>}
+                {uploadingQr && (
+                  <p className="text-xs text-orange-600 animate-pulse font-medium mt-1">
+                    QR कोड अपलोड होत आहे...
+                  </p>
+                )}
               </div>
 
               <div className="pt-2">
-                <label className="block text-xs font-semibold text-gray-600 mb-1">किंवा थेट इमेज URL प्रविष्ट करा:</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  किंवा थेट इमेज URL प्रविष्ट करा:
+                </label>
                 <input
                   type="url"
                   placeholder="https://.../qr.png"
@@ -416,7 +454,9 @@ export default function AdminDonationsPage({ showNotification }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">बँकेचे नाव (Bank Name)</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                बँकेचे नाव (Bank Name)
+              </label>
               <input
                 type="text"
                 value={bankName}
@@ -427,7 +467,9 @@ export default function AdminDonationsPage({ showNotification }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">शाखा (Branch)</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                शाखा (Branch)
+              </label>
               <input
                 type="text"
                 value={bankBranch}
@@ -438,7 +480,9 @@ export default function AdminDonationsPage({ showNotification }) {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">खाते क्रमांक (Account Number)</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                खाते क्रमांक (Account Number)
+              </label>
               <input
                 type="text"
                 value={bankAccNo}
@@ -460,7 +504,9 @@ export default function AdminDonationsPage({ showNotification }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">अधिकृत देणगी UPI ID</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                अधिकृत देणगी UPI ID
+              </label>
               <input
                 type="text"
                 value={upiId}
@@ -494,7 +540,12 @@ export default function AdminDonationsPage({ showNotification }) {
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 cursor-pointer px-3 py-1.5 rounded-md border border-gray-300">
                 <span>Excel/CSV अपलोड करा</span>
-                <input type="file" accept=".csv" onChange={handleBulkUpload} className="hidden" />
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleBulkUpload}
+                  className="hidden"
+                />
               </label>
               <span className="text-[10px] text-gray-400 max-w-[150px] leading-tight hidden sm:block">
                 (Headers: donor_name, amount, city, phone, category, payment_mode)
@@ -643,7 +694,11 @@ export default function AdminDonationsPage({ showNotification }) {
                 </td>
                 <td className="py-2.5 px-3 text-xs">
                   {d.receipt_no && <div className="font-mono text-orange-800">पावती: {d.receipt_no}</div>}
-                  {d.transaction_ref && <div className="text-[10px] text-gray-400 truncate max-w-[120px]">Ref: {d.transaction_ref}</div>}
+                  {d.transaction_ref && (
+                    <div className="text-[10px] text-gray-400 truncate max-w-[120px]">
+                      Ref: {d.transaction_ref}
+                    </div>
+                  )}
                 </td>
                 <td className="py-2.5 px-3 text-right font-bold text-orange-700">
                   ₹ {parseFloat(d.amount).toLocaleString('en-IN')}
