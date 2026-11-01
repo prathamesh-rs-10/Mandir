@@ -23,7 +23,8 @@ export default function AdminHomePage({ showNotification }) {
   const [formData, setFormData] = useState(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+  const [uploadingConceptIdx, setUploadingConceptIdx] = useState(null);
 
   const notify = (message, type = "success") => {
     if (typeof showNotification === "function") {
@@ -54,7 +55,12 @@ export default function AdminHomePage({ showNotification }) {
             concepts_title: data.concepts_title ?? "",
             concepts_subtitle: data.concepts_subtitle ?? "",
             concepts_list: Array.isArray(data.concepts_list)
-              ? data.concepts_list
+              ? data.concepts_list.map((c) => ({
+                  num: c.num ?? "",
+                  title: c.title ?? "",
+                  desc: c.desc ?? "",
+                  image_url: c.image_url ?? "",
+                }))
               : [],
             cta_title: data.cta_title ?? "",
             cta_desc: data.cta_desc ?? "",
@@ -79,7 +85,10 @@ export default function AdminHomePage({ showNotification }) {
   const handleAddConcept = () => {
     setFormData((prev) => ({
       ...prev,
-      concepts_list: [...prev.concepts_list, { num: "", title: "", desc: "" }],
+      concepts_list: [
+        ...prev.concepts_list,
+        { num: "", title: "", desc: "", image_url: "" },
+      ],
     }));
   };
 
@@ -90,13 +99,13 @@ export default function AdminHomePage({ showNotification }) {
     }));
   };
 
-  // Upload hero background image to Supabase Storage
+  // Upload hero background image
   const handleHeroImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      setUploadingImage(true);
+      setUploadingHeroImage(true);
       const fileExt = file.name.split(".").pop();
       const fileName = `hero-bg-${Date.now()}.${fileExt}`;
       const filePath = `home/${fileName}`;
@@ -105,22 +114,48 @@ export default function AdminHomePage({ showNotification }) {
         .from("mandir_assets")
         .upload(filePath, file, { upsert: true });
 
-      if (uploadError) {
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage
         .from("mandir_assets")
         .getPublicUrl(filePath);
 
       handleFieldChange("hero_image_url", publicUrlData.publicUrl);
-      notify("प्रतिमा यशस्वीरीत्या अपलोड झाली!");
+      notify("मुख्य बॅनर प्रतिमा अपलोड झाली!");
     } catch (err) {
       notify("प्रतिमा अपलोड करताना त्रुटी: " + err.message, "error");
     } finally {
-      setUploadingImage(false);
-      // Reset input element value so the same file can be re-selected if needed
+      setUploadingHeroImage(false);
       e.target.value = "";
+    }
+  };
+
+  // Upload specific concept card image
+  const handleConceptImageUpload = async (index, file) => {
+    if (!file) return;
+
+    try {
+      setUploadingConceptIdx(index);
+      const fileExt = file.name.split(".").pop();
+      const fileName = `concept-${Date.now()}-${index}.${fileExt}`;
+      const filePath = `concepts/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("mandir_assets")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("mandir_assets")
+        .getPublicUrl(filePath);
+
+      handleConceptChange(index, "image_url", publicUrlData.publicUrl);
+      notify("कार्ड प्रतिमा यशस्वीरीत्या जोडली!");
+    } catch (err) {
+      notify("कार्ड प्रतिमा अपलोड करताना त्रुटी: " + err.message, "error");
+    } finally {
+      setUploadingConceptIdx(null);
     }
   };
 
@@ -175,8 +210,7 @@ export default function AdminHomePage({ showNotification }) {
           मुख्य पृष्ठ व्यवस्थापन (Home Page CMS)
         </h2>
         <p className="text-xs text-stone-500 mt-1">
-          येथील सर्व बदल थेट डेटाबेसमध्ये जतन होतात आणि मुख्य पृष्ठावर प्रदर्शित
-          होतात.
+          येथील सर्व बदल थेट डेटाबेसमध्ये जतन होतात आणि मुख्य पृष्ठावर प्रदर्शित होतात.
         </p>
       </div>
 
@@ -187,51 +221,36 @@ export default function AdminHomePage({ showNotification }) {
             १. मुख्य बॅनर (Hero Section)
           </h3>
 
-          {/* Hero Background Image Picker & Direct URL */}
           <div className="bg-orange-50/50 border border-orange-200/80 rounded-xl p-4 space-y-3">
             <label className="block text-xs font-bold text-stone-800">
               मुख्य पार्श्वभूमी प्रतिमा (Hero Background Blur Image)
             </label>
-            <p className="text-xs text-stone-500">
-              ही प्रतिमा मुख्य पृष्ठावरील बॅनरच्या मागे ब्लर (अस्पष्ट) स्वरूपात दिसेल.
-            </p>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
               <div>
-                <span className="block text-xs text-stone-600 mb-1 font-medium">
-                  डिव्हाइसवरून प्रतिमा निवडा:
-                </span>
                 <input
                   type="file"
                   accept="image/*"
-                  disabled={uploadingImage}
+                  disabled={uploadingHeroImage}
                   onChange={handleHeroImageUpload}
                   className="block w-full text-xs text-stone-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-orange-600 file:text-white hover:file:bg-orange-700 cursor-pointer disabled:opacity-50"
                 />
-                {uploadingImage && (
+                {uploadingHeroImage && (
                   <p className="text-xs text-orange-700 font-medium mt-1">
                     प्रतिमा अपलोड होत आहे...
                   </p>
                 )}
               </div>
-
-              <div>
-                <span className="block text-xs text-stone-600 mb-1 font-medium">
-                  किंवा थेट प्रतिमेची लिंक (Direct Image URL):
-                </span>
-                <input
-                  type="url"
-                  placeholder="https://example.com/photo.jpg"
-                  value={formData.hero_image_url}
-                  onChange={(e) =>
-                    handleFieldChange("hero_image_url", e.target.value)
-                  }
-                  className="w-full px-3 py-2 border rounded-lg text-xs bg-white focus:ring-2 focus:ring-orange-400 focus:outline-none"
-                />
-              </div>
+              <input
+                type="url"
+                placeholder="किंवा थेट URL टाका..."
+                value={formData.hero_image_url}
+                onChange={(e) =>
+                  handleFieldChange("hero_image_url", e.target.value)
+                }
+                className="w-full px-3 py-2 border rounded-lg text-xs bg-white focus:ring-2 focus:ring-orange-400 focus:outline-none"
+              />
             </div>
 
-            {/* Preview Box */}
             {formData.hero_image_url && (
               <div className="pt-2 flex items-center gap-4">
                 <div className="relative w-36 h-20 rounded-lg overflow-hidden border border-stone-300 bg-stone-100 shadow-inner">
@@ -239,25 +258,17 @@ export default function AdminHomePage({ showNotification }) {
                     src={formData.hero_image_url}
                     alt="Hero Preview"
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "https://placehold.co/150x100?text=Invalid+URL";
-                    }}
                   />
                   <button
                     type="button"
                     onClick={() => handleFieldChange("hero_image_url", "")}
                     className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-700 transition"
-                    title="प्रतिमा काढा"
                   >
                     ×
                   </button>
                 </div>
-                <div className="text-xs text-stone-600">
-                  <span className="font-semibold text-stone-700">सध्या निवडलेली प्रतिमा</span>
-                  <p className="text-[11px] text-stone-400 break-all max-w-md">
-                    {formData.hero_image_url}
-                  </p>
+                <div className="text-xs text-stone-600 break-all max-w-md">
+                  {formData.hero_image_url}
                 </div>
               </div>
             )}
@@ -363,7 +374,7 @@ export default function AdminHomePage({ showNotification }) {
           </div>
         </div>
 
-        {/* Section 3: Architecture Concepts */}
+        {/* Section 3: Architecture Concepts with Image Upload */}
         <div className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-2 gap-2">
             <h3 className="text-base font-bold text-orange-800">
@@ -407,7 +418,7 @@ export default function AdminHomePage({ showNotification }) {
             </div>
           </div>
 
-          <div className="space-y-3 pt-2">
+          <div className="space-y-4 pt-2">
             {formData.concepts_list.map((card, idx) => (
               <div
                 key={idx}
@@ -428,7 +439,7 @@ export default function AdminHomePage({ showNotification }) {
                   <div className="flex-1">
                     <input
                       type="text"
-                      placeholder="शीर्षक"
+                      placeholder="शीर्षक (Title)"
                       value={card.title || ""}
                       onChange={(e) =>
                         handleConceptChange(idx, "title", e.target.value)
@@ -444,16 +455,72 @@ export default function AdminHomePage({ showNotification }) {
                     हटवा
                   </button>
                 </div>
+
                 <div>
                   <textarea
                     rows="2"
-                    placeholder="माहिती / वर्णन"
+                    placeholder="माहिती / वर्णन (Description)"
                     value={card.desc || ""}
                     onChange={(e) =>
                       handleConceptChange(idx, "desc", e.target.value)
                     }
                     className="w-full px-3 py-1.5 border rounded text-xs bg-white"
                   />
+                </div>
+
+                {/* Card Image Section */}
+                <div className="p-3 bg-white rounded-lg border border-orange-100 space-y-2">
+                  <span className="block text-[11px] font-bold text-stone-700">
+                    कार्ड प्रतिमा (Card Image)
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingConceptIdx === idx}
+                        onChange={(e) =>
+                          handleConceptImageUpload(idx, e.target.files?.[0])
+                        }
+                        className="block w-full text-xs text-stone-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-orange-100 file:text-orange-800 hover:file:bg-orange-200 cursor-pointer disabled:opacity-50"
+                      />
+                      {uploadingConceptIdx === idx && (
+                        <span className="text-[11px] text-orange-600 font-medium">
+                          अपलोड होत आहे...
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <input
+                        type="url"
+                        placeholder="किंवा थेट प्रतिमेची URL..."
+                        value={card.image_url || ""}
+                        onChange={(e) =>
+                          handleConceptChange(idx, "image_url", e.target.value)
+                        }
+                        className="w-full px-2.5 py-1.5 border rounded text-xs bg-stone-50 focus:bg-white focus:ring-1 focus:ring-orange-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Card Thumbnail Preview */}
+                  {card.image_url && (
+                    <div className="relative mt-2 w-28 h-20 rounded-md overflow-hidden border border-stone-200 bg-stone-100 shadow-sm">
+                      <img
+                        src={card.image_url}
+                        alt="Concept Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleConceptChange(idx, "image_url", "")}
+                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] hover:bg-red-700 transition"
+                        title="प्रतिमा काढा"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -524,7 +591,7 @@ export default function AdminHomePage({ showNotification }) {
           </p>
           <button
             type="submit"
-            disabled={loading || uploadingImage}
+            disabled={loading || uploadingHeroImage || uploadingConceptIdx !== null}
             className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-md"
           >
             {loading ? "जतन करत आहे..." : "सर्व बदल सेव्ह करा"}
