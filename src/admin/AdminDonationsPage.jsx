@@ -31,18 +31,20 @@ export default function AdminDonationsPage({ showNotification }) {
   const [isVisible, setIsVisible] = useState(true);
 
   const loadData = async () => {
-    // 1. Fetch donations ledger
+    // 1. Fetch donations from the unified table
     const { data: donData } = await supabase
       .from('mandir_donations')
       .select('*')
+      .eq('record_type', 'donation')
       .order('created_at', { ascending: false });
 
     if (donData) setDonations(donData);
 
-    // 2. Fetch donation settings, bank details & QR code
+    // 2. Fetch settings row from the same table
     const { data: settingsData } = await supabase
-      .from('mandir_donation_settings')
+      .from('mandir_donations')
       .select('*')
+      .eq('record_type', 'settings')
       .limit(1)
       .maybeSingle();
 
@@ -63,7 +65,7 @@ export default function AdminDonationsPage({ showNotification }) {
     loadData();
   }, []);
 
-  // Upload QR to Supabase Storage
+  // Upload QR to Supabase Storage & save URL in the unified table
   const handleQrUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -89,28 +91,37 @@ export default function AdminDonationsPage({ showNotification }) {
 
     const publicUrl = publicUrlData.publicUrl;
 
-    const { error: dbError } = await supabase
-      .from('mandir_donation_settings')
-      .upsert({
-        id: settingsId || 1,
-        donation_qr_url: publicUrl,
-        updated_at: new Date().toISOString(),
-      });
+    const payload = {
+      record_type: 'settings',
+      donation_qr_url: publicUrl,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (settingsId) payload.id = settingsId;
+
+    const { data: updatedRecord, error: dbError } = await supabase
+      .from('mandir_donations')
+      .upsert(payload)
+      .select()
+      .maybeSingle();
 
     setUploadingQr(false);
     if (!dbError) {
+      if (updatedRecord?.id) setSettingsId(updatedRecord.id);
       setQrUrl(publicUrl);
       showNotification('नवीन QR कोड यशस्वीरित्या सेव्ह झाला!');
+    } else {
+      showNotification('त्रुटी: ' + dbError.message, 'error');
     }
   };
 
-  // Save Bank, UPI & Account Name
+  // Save Bank, UPI & Account Name in the unified table
   const handleSaveBankInfo = async (e) => {
     e.preventDefault();
     setSavingBankInfo(true);
 
     const payload = {
-      id: settingsId || 1,
+      record_type: 'settings',
       bank_acc_holder_name: accountHolderName,
       bank_name: bankName,
       bank_acc_no: bankAccNo,
@@ -122,10 +133,18 @@ export default function AdminDonationsPage({ showNotification }) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('mandir_donation_settings').upsert(payload);
+    if (settingsId) payload.id = settingsId;
+
+    const { data: savedRecord, error } = await supabase
+      .from('mandir_donations')
+      .upsert(payload)
+      .select()
+      .maybeSingle();
+
     setSavingBankInfo(false);
 
     if (!error) {
+      if (savedRecord?.id) setSettingsId(savedRecord.id);
       showNotification('बँक खाते, खातेधारकाचे नाव व UPI माहिती यशस्वीरित्या सेव्ह झाली!');
     } else {
       showNotification('त्रुटी: ' + error.message, 'error');
@@ -137,6 +156,7 @@ export default function AdminDonationsPage({ showNotification }) {
     e.preventDefault();
 
     const payload = {
+      record_type: 'donation',
       donor_name: donorName,
       amount: parseFloat(amount),
       city: city || 'मुंबई',
@@ -246,6 +266,7 @@ export default function AdminDonationsPage({ showNotification }) {
 
         if (record.donor_name && record.amount) {
           dataToInsert.push({
+            record_type: 'donation',
             donor_name: record.donor_name,
             amount: parseFloat(record.amount),
             city: record.city || 'मुंबई',
@@ -374,7 +395,7 @@ export default function AdminDonationsPage({ showNotification }) {
           </div>
         </div>
 
-        {/* Bank & UPI Input Form with Account Name */}
+        {/* Bank & UPI Input Form */}
         <form onSubmit={handleSaveBankInfo} className="space-y-4 pt-2">
           <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
             💳 बँक खाते, खातेदार नाव व UPI तपशील
