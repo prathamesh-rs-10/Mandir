@@ -1,34 +1,102 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
+const BUCKET_NAME = "temple-assets";
+
+/**
+ * Normalizes image paths to ensure valid rendering across
+ * Supabase Storage public URLs, external URLs, and Base64 strings.
+ */
+function resolveImageUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+
+  // Return as-is if already an absolute HTTP(S) link or Base64 data URI
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:")
+  ) {
+    return trimmed;
+  }
+
+  // Resolve relative Supabase storage paths (e.g. "home/hero-bg-123.jpg")
+  const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(trimmed);
+  return data?.publicUrl || trimmed;
+}
+
 export default function HomePage({ onNavigate }) {
   const [homeData, setHomeData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    supabase
-      .from("mandir_home_content")
-      .select("*")
-      .limit(1)
-      .single()
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setHomeData(data);
+    let isMounted = true;
+
+    async function fetchHomeContent() {
+      try {
+        setLoading(true);
+        const { data, error: fetchError } = await supabase
+          .from("mandir_home_content")
+          .select("*")
+          .limit(1)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        if (isMounted && data) {
+          // Normalize concepts_list if stored as a stringified JSON
+          let parsedConcepts = [];
+          if (Array.isArray(data.concepts_list)) {
+            parsedConcepts = data.concepts_list;
+          } else if (typeof data.concepts_list === "string") {
+            try {
+              parsedConcepts = JSON.parse(data.concepts_list);
+            } catch {
+              parsedConcepts = [];
+            }
+          }
+
+          setHomeData({
+            ...data,
+            hero_image_url: resolveImageUrl(data.hero_image_url),
+            concepts_list: parsedConcepts.map((item) => ({
+              ...item,
+              image_url: resolveImageUrl(item.image_url),
+            })),
+          });
         }
-        setLoading(false);
-      });
+      } catch (err) {
+        if (isMounted) setError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    fetchHomeContent();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-amber-50/30 flex flex-col items-center justify-center p-8">
         <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-sm font-medium text-stone-600">माहिती लोड होत आहे...</p>
       </div>
     );
   }
 
-  if (!homeData) {
-    return null;
+  if (error || !homeData) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-center">
+        <p className="text-stone-600 font-medium">
+          {error ? `माहिती मिळवण्यात त्रुटी: ${error}` : "कोणतीही माहिती उपलब्ध नाही."}
+        </p>
+      </div>
+    );
   }
 
   const hasConcepts =
@@ -36,14 +104,14 @@ export default function HomePage({ onNavigate }) {
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 font-sans antialiased">
-      {/* Hero Banner with Blurred Admin Background */}
+      {/* 1. Hero Banner */}
       {homeData.show_hero_section !== false && (
         <section className="relative overflow-hidden bg-gradient-to-b from-orange-700 via-amber-700 to-amber-800 text-white py-24 px-4 text-center shadow-xl">
           {/* Blurred Background Layer */}
           {homeData.hero_image_url && (
             <div
               className="absolute inset-0 bg-cover bg-center scale-110 filter blur-md sm:blur-lg opacity-40 transition-all duration-700 pointer-events-none"
-              style={{ backgroundImage: `url(${homeData.hero_image_url})` }}
+              style={{ backgroundImage: `url("${homeData.hero_image_url}")` }}
               aria-hidden="true"
             />
           )}
@@ -83,7 +151,7 @@ export default function HomePage({ onNavigate }) {
         </section>
       )}
 
-      {/* Editorial Vision */}
+      {/* 2. Editorial Vision */}
       {homeData.show_editorial_section !== false &&
         (homeData.editorial_title ||
           homeData.editorial_quote ||
@@ -100,7 +168,7 @@ export default function HomePage({ onNavigate }) {
 
             {homeData.editorial_quote && (
               <div className="relative mb-8 bg-amber-50/60 border border-amber-200/80 rounded-2xl p-6 sm:p-8 shadow-sm">
-                <div className="text-4xl text-orange-400 font-serif absolute -top-4 left-6 bg-stone-50 px-2 rounded">
+                <div className="text-4xl text-orange-400 font-serif absolute -top-4 left-6 bg-stone-50 px-2 rounded leading-none select-none">
                   “
                 </div>
                 <p className="text-lg sm:text-xl font-medium italic text-stone-800 leading-relaxed text-center">
@@ -117,7 +185,7 @@ export default function HomePage({ onNavigate }) {
           </section>
         )}
 
-      {/* Architectural Concept Grid */}
+      {/* 3. Architectural Concept Grid */}
       {homeData.show_concepts_section !== false && hasConcepts && (
         <section className="bg-white py-16 px-6 border-y border-orange-100">
           <div className="max-w-6xl mx-auto">
@@ -151,6 +219,9 @@ export default function HomePage({ onNavigate }) {
                         alt={item.title || "Concept Image"}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
                       />
                       {item.num && (
                         <span className="absolute top-3 left-3 text-xs font-bold text-orange-900 bg-white/90 backdrop-blur-sm border border-orange-200 px-3 py-1 rounded-md shadow-sm">
@@ -168,7 +239,7 @@ export default function HomePage({ onNavigate }) {
                     )
                   )}
 
-                  {/* Card Text Content */}
+                  {/* Card Content */}
                   <div className="p-6 flex-1 flex flex-col">
                     {item.title && (
                       <h3 className="text-lg font-bold text-stone-900 mb-2 group-hover:text-orange-700 transition-colors">
@@ -188,7 +259,7 @@ export default function HomePage({ onNavigate }) {
         </section>
       )}
 
-      {/* Action CTA */}
+      {/* 4. Action CTA */}
       {homeData.show_cta_section !== false &&
         (homeData.cta_title ||
           homeData.cta_desc ||
@@ -209,6 +280,7 @@ export default function HomePage({ onNavigate }) {
               <div className="flex flex-wrap items-center justify-center gap-4">
                 {homeData.cta_btn_primary_text && (
                   <button
+                    type="button"
                     onClick={() => onNavigate && onNavigate("donations")}
                     className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold px-7 py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all"
                   >
@@ -217,6 +289,7 @@ export default function HomePage({ onNavigate }) {
                 )}
                 {homeData.cta_btn_secondary_text && (
                   <button
+                    type="button"
                     onClick={() => onNavigate && onNavigate("reports")}
                     className="bg-white hover:bg-stone-50 text-orange-900 font-bold px-7 py-3.5 border-2 border-orange-300 hover:border-orange-400 rounded-xl shadow-sm transition-all"
                   >
