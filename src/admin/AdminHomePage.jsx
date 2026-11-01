@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 
+const BUCKET_NAME = "temple-assets";
+
 const EMPTY_STATE = {
   hero_title: "",
   hero_subtitle: "",
@@ -111,13 +113,13 @@ export default function AdminHomePage({ showNotification }) {
       const filePath = `home/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("mandir_assets")
+        .from(BUCKET_NAME)
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage
-        .from("mandir_assets")
+        .from(BUCKET_NAME)
         .getPublicUrl(filePath);
 
       handleFieldChange("hero_image_url", publicUrlData.publicUrl);
@@ -141,13 +143,13 @@ export default function AdminHomePage({ showNotification }) {
       const filePath = `concepts/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("mandir_assets")
+        .from(BUCKET_NAME)
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage
-        .from("mandir_assets")
+        .from(BUCKET_NAME)
         .getPublicUrl(filePath);
 
       handleConceptChange(index, "image_url", publicUrlData.publicUrl);
