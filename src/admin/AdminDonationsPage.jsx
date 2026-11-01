@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 
 export default function AdminDonationsPage({ showNotification }) {
   const [donations, setDonations] = useState([]);
-  const [contactId, setContactId] = useState(null);
+  const [settingsId, setSettingsId] = useState(null);
 
   // Bank, QR & UPI States
   const [qrUrl, setQrUrl] = useState('');
@@ -31,7 +31,7 @@ export default function AdminDonationsPage({ showNotification }) {
   const [isVisible, setIsVisible] = useState(true);
 
   const loadData = async () => {
-    // 1. Fetch donations
+    // 1. Fetch donations ledger
     const { data: donData } = await supabase
       .from('mandir_donations')
       .select('*')
@@ -39,23 +39,23 @@ export default function AdminDonationsPage({ showNotification }) {
 
     if (donData) setDonations(donData);
 
-    // 2. Fetch contact info, bank details & QR code
-    const { data: infoData } = await supabase
-      .from('mandir_contact_info')
+    // 2. Fetch donation settings, bank details & QR code
+    const { data: settingsData } = await supabase
+      .from('mandir_donation_settings')
       .select('*')
       .limit(1)
       .maybeSingle();
 
-    if (infoData) {
-      setContactId(infoData.id);
-      setQrUrl(infoData.donation_qr_url || '');
-      setAccountHolderName(infoData.bank_acc_holder_name || infoData.trust_name || '');
-      setBankName(infoData.bank_name || '');
-      setBankAccNo(infoData.bank_acc_no || '');
-      setBankIfsc(infoData.bank_ifsc || '');
-      setBankBranch(infoData.bank_branch || '');
-      setUpiId(infoData.upi_id || '');
-      setShowBankingSection(infoData.show_banking_section !== false);
+    if (settingsData) {
+      setSettingsId(settingsData.id);
+      setQrUrl(settingsData.donation_qr_url || '');
+      setAccountHolderName(settingsData.bank_acc_holder_name || '');
+      setBankName(settingsData.bank_name || '');
+      setBankAccNo(settingsData.bank_acc_no || '');
+      setBankIfsc(settingsData.bank_ifsc || '');
+      setBankBranch(settingsData.bank_branch || '');
+      setUpiId(settingsData.upi_id || '');
+      setShowBankingSection(settingsData.show_banking_section !== false);
     }
   };
 
@@ -90,9 +90,9 @@ export default function AdminDonationsPage({ showNotification }) {
     const publicUrl = publicUrlData.publicUrl;
 
     const { error: dbError } = await supabase
-      .from('mandir_contact_info')
+      .from('mandir_donation_settings')
       .upsert({
-        id: contactId || 1,
+        id: settingsId || 1,
         donation_qr_url: publicUrl,
         updated_at: new Date().toISOString(),
       });
@@ -110,9 +110,8 @@ export default function AdminDonationsPage({ showNotification }) {
     setSavingBankInfo(true);
 
     const payload = {
-      id: contactId || 1,
+      id: settingsId || 1,
       bank_acc_holder_name: accountHolderName,
-      trust_name: accountHolderName, // Kept in sync so frontend displays correctly
       bank_name: bankName,
       bank_acc_no: bankAccNo,
       bank_ifsc: bankIfsc,
@@ -123,7 +122,7 @@ export default function AdminDonationsPage({ showNotification }) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('mandir_contact_info').upsert(payload);
+    const { error } = await supabase.from('mandir_donation_settings').upsert(payload);
     setSavingBankInfo(false);
 
     if (!error) {
@@ -317,7 +316,7 @@ export default function AdminDonationsPage({ showNotification }) {
         </div>
       </div>
 
-      {/* ─── BANK DETAILS, ACCOUNT HOLDER & QR CODE MANAGEMENT ─── */}
+      {/* BANK DETAILS, ACCOUNT HOLDER & QR CODE MANAGEMENT */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3">
           <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
