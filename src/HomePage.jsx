@@ -35,40 +35,55 @@ export default function HomePage({ onNavigate }) {
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 font-sans antialiased">
-      {/* Hero Banner */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-orange-600 via-amber-600 to-amber-700 text-white py-20 px-4 text-center shadow-xl">
-        <div className="relative max-w-4xl mx-auto space-y-4">
-          {homeData.location_tag && (
-            <div className="inline-flex items-center gap-2 bg-orange-950/40 border border-orange-300/30 px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium tracking-wide backdrop-blur-md">
-              <span>📍</span>
-              <span>{homeData.location_tag}</span>
-            </div>
+      {/* Hero Banner with Blurred Admin Background */}
+      {homeData.show_hero_section !== false && (
+        <section className="relative overflow-hidden bg-gradient-to-b from-orange-700 via-amber-700 to-amber-800 text-white py-24 px-4 text-center shadow-xl">
+          {/* Blurred Background Image Layer */}
+          {homeData.hero_image_url && (
+            <div
+              className="absolute inset-0 bg-cover bg-center scale-110 filter blur-md sm:blur-lg opacity-40 transition-all duration-700 pointer-events-none"
+              style={{ backgroundImage: `url(${homeData.hero_image_url})` }}
+              aria-hidden="true"
+            />
           )}
 
-          {homeData.hero_title && (
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-amber-50 drop-shadow-sm leading-tight">
-              {homeData.hero_title}
-            </h1>
-          )}
+          {/* Contrast tint overlay */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-orange-950/40 to-black/60 pointer-events-none" />
 
-          {homeData.hero_subtitle && (
-            <h2 className="text-lg sm:text-2xl font-semibold text-orange-100 max-w-2xl mx-auto drop-shadow">
-              {homeData.hero_subtitle}
-            </h2>
-          )}
+          {/* Hero Content */}
+          <div className="relative z-10 max-w-4xl mx-auto space-y-5">
+            {homeData.location_tag && (
+              <div className="inline-flex items-center gap-2 bg-black/40 border border-orange-200/40 px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium tracking-wide backdrop-blur-md">
+                <span>📍</span>
+                <span>{homeData.location_tag}</span>
+              </div>
+            )}
 
-          {homeData.slogan && (
-            <div className="pt-2">
-              <span className="inline-block bg-orange-900/60 border border-amber-300/30 backdrop-blur-md px-6 py-2.5 rounded-full shadow-lg text-xs sm:text-sm md:text-base font-medium text-amber-100">
-                {homeData.slogan}
-              </span>
-            </div>
-          )}
-        </div>
-      </section>
+            {homeData.hero_title && (
+              <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-amber-50 drop-shadow-md leading-tight">
+                {homeData.hero_title}
+              </h1>
+            )}
+
+            {homeData.hero_subtitle && (
+              <h2 className="text-lg sm:text-2xl font-semibold text-orange-100 max-w-2xl mx-auto drop-shadow">
+                {homeData.hero_subtitle}
+              </h2>
+            )}
+
+            {homeData.slogan && (
+              <div className="pt-2">
+                <span className="inline-block bg-orange-950/70 border border-amber-300/40 backdrop-blur-md px-6 py-2.5 rounded-full shadow-lg text-xs sm:text-sm md:text-base font-medium text-amber-100">
+                  {homeData.slogan}
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Editorial Vision */}
-      {(homeData.editorial_title || homeData.editorial_quote || homeData.editorial_body) && (
+      {homeData.show_editorial_section !== false && (homeData.editorial_title || homeData.editorial_quote || homeData.editorial_body) && (
         <section className="max-w-4xl mx-auto py-16 px-6">
           {homeData.editorial_title && (
             <div className="text-center mb-8">
@@ -99,7 +114,7 @@ export default function HomePage({ onNavigate }) {
       )}
 
       {/* Architectural Concept Grid */}
-      {hasConcepts && (
+      {homeData.show_concepts_section !== false && hasConcepts && (
         <section className="bg-white py-16 px-6 border-y border-orange-100">
           <div className="max-w-6xl mx-auto">
             {(homeData.concepts_title || homeData.concepts_subtitle) && (
@@ -149,7 +164,7 @@ export default function HomePage({ onNavigate }) {
       )}
 
       {/* Action CTA */}
-      {(homeData.cta_title || homeData.cta_desc || homeData.cta_btn_primary_text || homeData.cta_btn_secondary_text) && (
+      {homeData.show_cta_section !== false && (homeData.cta_title || homeData.cta_desc || homeData.cta_btn_primary_text || homeData.cta_btn_secondary_text) && (
         <section className="py-16 px-6 bg-gradient-to-b from-orange-50 to-amber-100/50">
           <div className="max-w-3xl mx-auto text-center bg-white border border-amber-200/90 rounded-3xl p-8 sm:p-12 shadow-lg">
             {homeData.cta_title && (
