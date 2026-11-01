@@ -251,7 +251,7 @@ export default function App() {
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="space-y-1">
             <h3 className="text-lg font-bold text-white tracking-wide">
-              श्री काळंबादेवी मंदिर जीर्णोद्धार कमिटी, शेरपे, मुंबई
+              श्री काळंबादेवी मंदिर जीर्णोद्धार कमिटी, शेर्पे, मुंबई
             </h3>
             <p className="text-sm text-gray-300">
               व्यवस्थापक : श्री काळंबादेवी मंडळ (रजिस्टर)
@@ -281,7 +281,7 @@ export default function App() {
           <div className="flex justify-center flex-wrap gap-4 text-xs text-gray-500">
             <span>आपली श्रद्धा | आपला वारसा | आपल्या पुढील पिढ्यांसाठी</span>
             <span>•</span>
-            <span>शेरपे, मुंबई</span>
+            <span>शेर्पे, मुंबई</span>
           </div>
 
           <p className="text-xs text-gray-600">
